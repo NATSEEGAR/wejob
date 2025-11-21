@@ -7,7 +7,8 @@ import { supabase } from '../supabaseClient';
 import { 
   LocationOn, AccessTime, Visibility, 
   PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
-  Person as PersonIcon, Phone as PhoneIcon
+  Person as PersonIcon, Phone as PhoneIcon, 
+  Cancel as CancelIcon // <--- เพิ่มไอคอน Cancel
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
@@ -105,6 +106,22 @@ function MyJobsPage() {
           showError("เกิดข้อผิดพลาด", error.message);
       } finally {
           setUploading(false);
+      }
+  };
+
+  // --- [NEW] ฟังก์ชันยกเลิกการส่งงาน ---
+  const handleCancelSubmission = async () => {
+      if (!(await confirmAction('ยกเลิกการส่งงาน?', 'สถานะจะกลับไปเป็น "กำลังดำเนินการ" เพื่อให้คุณแก้ไขรูปภาพหรือข้อมูลได้', 'ใช่, ยกเลิกการส่ง'))) return;
+
+      // ย้อนสถานะกลับไปเป็น IN_PROGRESS
+      const { error } = await supabase.from('Jobs').update({ status: 'IN_PROGRESS' }).eq('id', selectedJob.id);
+      
+      if (!error) {
+          showSuccess("ยกเลิกการส่งงานแล้ว", "คุณสามารถแก้ไขและส่งใหม่ได้ทันที");
+          setOpenDetailDialog(false);
+          fetchMyJobs();
+      } else {
+          showError("เกิดข้อผิดพลาด", error.message);
       }
   };
 
@@ -227,7 +244,24 @@ function MyJobsPage() {
                                 </Button>
                             </Box>
                         )}
-                        {selectedJob.status === 'WAITING_REVIEW' && <Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" />}
+
+                        {/* --- [NEW] ส่วนปุ่มยกเลิกการส่งงาน --- */}
+                        {selectedJob.status === 'WAITING_REVIEW' && (
+                            <Stack spacing={2} alignItems="center">
+                                <Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" />
+                                <Button 
+                                    variant="text" 
+                                    color="error" 
+                                    size="small"
+                                    startIcon={<CancelIcon />}
+                                    onClick={handleCancelSubmission}
+                                >
+                                    ยกเลิกการส่งงาน (แก้ไขใหม่)
+                                </Button>
+                            </Stack>
+                        )}
+                        {/* ------------------------------------- */}
+
                         {selectedJob.status === 'APPROVED' && <Chip label="งานเสร็จสมบูรณ์แล้ว" color="success" />}
                       </Box>
                   </Stack>
