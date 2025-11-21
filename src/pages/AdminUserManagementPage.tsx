@@ -5,23 +5,18 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { Visibility, Delete as DeleteIcon, PersonAdd } from '@mui/icons-material';
+import { Visibility, Delete as DeleteIcon, PersonAdd, Phone } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
 
 // ฟังก์ชันแปลงสถานะงานเป็นภาษาไทยและสีที่กำหนด
 const getJobStatusConfig = (status: string) => {
   switch (status) {
-    case 'PENDING': 
-      return { label: 'รอดำเนินการ', color: '#D32F2F', bgcolor: '#FFEBEE' }; // แดง
-    case 'IN_PROGRESS': 
-      return { label: 'กำลังดำเนินการ', color: '#E65100', bgcolor: '#FFF3E0' }; // ส้ม/เหลืองเข้ม
-    case 'WAITING_REVIEW': 
-      return { label: 'รอตรวจงาน', color: '#2E7D32', bgcolor: '#C8E6C9' }; // เขียวอ่อน
-    case 'APPROVED': 
-      return { label: 'ตรวจเรียบร้อย', color: '#1B5E20', bgcolor: '#A5D6A7' }; // เขียวเข้ม
-    default: 
-      return { label: status, color: '#757575', bgcolor: '#EEEEEE' };
+    case 'PENDING': return { label: 'รอดำเนินการ', color: '#D32F2F', bgcolor: '#FFEBEE' };
+    case 'IN_PROGRESS': return { label: 'กำลังดำเนินการ', color: '#E65100', bgcolor: '#FFF3E0' };
+    case 'WAITING_REVIEW': return { label: 'รอตรวจงาน', color: '#2E7D32', bgcolor: '#C8E6C9' };
+    case 'APPROVED': return { label: 'ตรวจเรียบร้อย', color: '#1B5E20', bgcolor: '#A5D6A7' };
+    default: return { label: status, color: '#757575', bgcolor: '#EEEEEE' };
   }
 };
 
@@ -49,7 +44,6 @@ function AdminUserManagementPage() {
 
   const handleViewUser = async (user: any) => {
     setSelectedUser(user);
-    // ดึงงานของ User นี้ และเรียงจากใหม่ไปเก่า
     const { data } = await supabase
       .from('Jobs')
       .select('*')
@@ -65,14 +59,12 @@ function AdminUserManagementPage() {
       }
 
       if (await confirmAction(`ลบผู้ใช้ ${targetUser.nickname}?`, `คุณแน่ใจหรือไม่ที่จะลบ "${targetUser.first_name} ${targetUser.last_name}" ออกจากระบบถาวร?`, 'ยืนยันลบ', '#D32F2F')) {
-          
           const { error } = await supabase.rpc('delete_user_account', { user_id_to_delete: targetUser.user_id });
           
           if (!error) {
               showSuccess("ลบผู้ใช้เรียบร้อยแล้ว");
               fetchUsers();
           } else {
-              // Fallback: ถ้าไม่มี RPC ให้ลองลบธรรมดา
               const { error: delError } = await supabase.from('Profiles').delete().eq('user_id', targetUser.user_id);
               if (!delError) {
                   showSuccess("ลบข้อมูลผู้ใช้แล้ว");
@@ -107,8 +99,9 @@ function AdminUserManagementPage() {
           <Table>
             <TableHead sx={{ bgcolor: '#424242' }}>
               <TableRow>
-                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>พนักงาน (ชื่อเล่น)</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>พนักงาน (ID)</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ชื่อ - นามสกุล</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>เบอร์โทร</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>แผนก</TableCell>
                 <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ตำแหน่ง</TableCell>
                 <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>จัดการ</TableCell>
@@ -122,11 +115,19 @@ function AdminUserManagementPage() {
                           <Avatar sx={{ bgcolor: u.role === 'ADMIN' ? '#D32F2F' : '#757575' }}>{u.nickname?.[0]}</Avatar>
                           <Box>
                               <Typography fontWeight={600}>{u.nickname}</Typography>
-                              <Typography variant="caption" color="text.secondary">{u.username}</Typography>
+                              <Typography variant="caption" color="text.secondary">ID: {u.employee_id || '-'}</Typography>
                           </Box>
                       </Stack>
                   </TableCell>
                   <TableCell>{u.first_name} {u.last_name}</TableCell>
+                  <TableCell>
+                      {u.phone_number ? (
+                          <Stack direction="row" alignItems="center" spacing={0.5}>
+                              <Phone fontSize="small" color="action" />
+                              <Typography variant="body2">{u.phone_number}</Typography>
+                          </Stack>
+                      ) : "-"}
+                  </TableCell>
                   <TableCell>{u.department || '-'}</TableCell>
                   <TableCell>
                       <Chip 
@@ -163,10 +164,16 @@ function AdminUserManagementPage() {
         </TableContainer>
       </Paper>
 
-      {/* Dialog แสดงงานของ User */}
       <Dialog open={!!selectedUser} onClose={() => setSelectedUser(null)} fullWidth maxWidth="md">
           <DialogTitle sx={{ bgcolor: '#424242', color: 'white' }}>
-              งานของ: {selectedUser?.first_name} {selectedUser?.last_name} ({selectedUser?.nickname})
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                  <Box>
+                    งานของ: {selectedUser?.first_name} {selectedUser?.last_name}
+                    <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                        ID: {selectedUser?.employee_id} | โทร: {selectedUser?.phone_number}
+                    </Typography>
+                  </Box>
+              </Stack>
           </DialogTitle>
           <DialogContent sx={{ pt: 3, bgcolor: '#F5F5F5' }}>
               <Typography variant="h6" sx={{ mt: 2, mb: 2, fontWeight: 'bold' }}>
@@ -182,33 +189,18 @@ function AdminUserManagementPage() {
                                       <Typography variant="h6" fontWeight="bold">{job.title}</Typography>
                                       <Typography variant="body2" color="text.secondary">{job.location || 'ไม่ระบุสถานที่'}</Typography>
                                       <Typography variant="caption" color="text.secondary">
-                                          {new Date(job.start_time).toLocaleDateString('th-TH')} | {new Date(job.start_time).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})} - {new Date(job.end_time).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}
+                                          {new Date(job.start_time).toLocaleDateString('th-TH')}
                                       </Typography>
                                   </Box>
-                                  
                                   <Box sx={{ textAlign: 'right' }}>
-                                      <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
-                                          สถานะงาน:
-                                      </Typography>
-                                      <Chip 
-                                          label={statusConfig.label} 
-                                          sx={{ 
-                                              bgcolor: statusConfig.bgcolor, 
-                                              color: statusConfig.color, 
-                                              fontWeight: 'bold',
-                                              fontSize: '0.9rem'
-                                          }} 
-                                      />
+                                      <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>สถานะงาน:</Typography>
+                                      <Chip label={statusConfig.label} sx={{ bgcolor: statusConfig.bgcolor, color: statusConfig.color, fontWeight: 'bold' }} />
                                   </Box>
                               </Stack>
                           </Paper>
                       );
                   })}
-                  {userJobs.length === 0 && (
-                      <Box sx={{ textAlign: 'center', py: 5, color: 'text.secondary' }}>
-                          <Typography variant="h6">- ยังไม่มีงานที่ได้รับมอบหมาย -</Typography>
-                      </Box>
-                  )}
+                  {userJobs.length === 0 && <Box sx={{ textAlign: 'center', py: 5, color: 'text.secondary' }}><Typography variant="h6">- ยังไม่มีงานที่ได้รับมอบหมาย -</Typography></Box>}
               </Stack>
           </DialogContent>
           <Box sx={{ p: 2, display: 'flex', justifyContent: 'flex-end', bgcolor: 'white' }}>

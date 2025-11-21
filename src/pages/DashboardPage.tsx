@@ -121,41 +121,12 @@ function DashboardPage() {
       } else { showError("เกิดข้อผิดพลาด", error.message); }
   };
 
-  // --- [🛠️ แก้ไขใหม่] ฟังก์ชันลบงาน พร้อมลบรูปภาพ ---
   const handleDeleteJob = async () => { 
       if(!selectedJob) return; 
-      
-      if(!(await confirmAction('ลบงานถาวร?', `ลบงาน "${selectedJob.title}"? (รูปภาพที่แนบมาจะถูกลบด้วย)`, 'ลบเลย', '#D32F2F'))) return; 
-      
-      // 1. ลบรูปออกจาก Storage (ถ้ามี)
-      if (selectedJob.image_url) {
-          try {
-              // แกะชื่อไฟล์จาก URL (URL: .../job-evidence/filename.jpg)
-              const fileName = selectedJob.image_url.split('/').pop();
-              if (fileName) {
-                  const { error: storageError } = await supabase.storage
-                      .from('job-evidence')
-                      .remove([fileName]);
-                  
-                  if (storageError) console.error("ลบรูปไม่สำเร็จ:", storageError);
-              }
-          } catch (err) {
-              console.error("เกิดข้อผิดพลาดตอนลบรูป:", err);
-          }
-      }
-
-      // 2. ลบงานออกจาก Database
+      if(!(await confirmAction('ลบงานถาวร?', `ลบงาน "${selectedJob.title}"?`, 'ลบเลย', '#D32F2F'))) return; 
       const { error } = await supabase.from('Jobs').delete().eq('id', selectedJob.id); 
-      
-      if (!error) { 
-          showSuccess("ลบงานและรูปภาพเรียบร้อย"); 
-          setOpenDetailDialog(false); 
-          fetchJobs(); 
-      } else { 
-          showError("ลบไม่ได้", error.message); 
-      }
+      if (!error) { showSuccess("ลบงานเรียบร้อย"); setOpenDetailDialog(false); fetchJobs(); } else { showError("ลบไม่ได้", error.message); }
   };
-  // --------------------------------------------------
   
   const updateJobStatus = async (id:any, status:any, msg: string) => { 
       if (!(await confirmAction('เปลี่ยนสถานะ', msg))) return;
@@ -273,7 +244,7 @@ function DashboardPage() {
                  <TextField label="รายละเอียดเพิ่มเติม" multiline rows={3} fullWidth value={newJob.description} onChange={e => setNewJob({...newJob, description: e.target.value})} />
                  <Stack direction="row" spacing={2}>
                     <TextField type="datetime-local" label="เวลาเริ่ม" fullWidth InputLabelProps={{shrink:true}} value={newJob.start_time} onChange={e => setNewJob({...newJob, start_time: e.target.value})} />
-                    <TextField type="datetime-local" label="เวลาจบ" fullWidth InputLabelProps={{shrink:true}} value={newJob.end_time} onChange={e => setNewJob({...newJob, end_time: e.target.value})} />
+                    <TextField type="datetime-local" label="จบ" fullWidth InputLabelProps={{shrink:true}} value={newJob.end_time} onChange={e => setNewJob({...newJob, end_time: e.target.value})} />
                  </Stack>
              </Stack>
          </DialogContent>
