@@ -6,7 +6,8 @@ import {
 import { supabase } from '../supabaseClient';
 import { 
   LocationOn, AccessTime, Visibility, 
-  PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon
+  PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
+  Person as PersonIcon, Phone as PhoneIcon
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
@@ -16,7 +17,6 @@ function MyJobsPage() {
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   
-  // State สำหรับการอัปโหลดรูป
   const [uploading, setUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -58,29 +58,25 @@ function MyJobsPage() {
         start_formatted: new Date(job.start_time).toLocaleString('th-TH'),
         end_formatted: new Date(job.end_time).toLocaleString('th-TH')
     });
-    // ล้างค่ารูปภาพเก่าเมื่อเปิดงานใหม่
     setSelectedImage(null);
     setPreviewUrl(null);
     setOpenDetailDialog(true);
   };
 
-  // ฟังก์ชันเลือกไฟล์รูป
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
       if (event.target.files && event.target.files[0]) {
           const file = event.target.files[0];
           setSelectedImage(file);
-          setPreviewUrl(URL.createObjectURL(file)); // สร้าง URL ชั่วคราวเพื่อแสดงตัวอย่าง
+          setPreviewUrl(URL.createObjectURL(file));
       }
   };
 
-  // ฟังก์ชันเริ่มงาน (ไม่ต้องมีรูป)
   const handleStartJob = async () => {
       if (!(await confirmAction('เริ่มงาน?', 'ยืนยันที่จะเริ่มปฏิบัติงาน'))) return;
       const { error } = await supabase.from('Jobs').update({ status: 'IN_PROGRESS' }).eq('id', selectedJob.id);
       if (!error) { showSuccess('เริ่มงานแล้ว'); setOpenDetailDialog(false); fetchMyJobs(); }
   };
 
-  // ฟังก์ชันส่งงาน (ต้องมีรูป)
   const handleSubmitJob = async () => {
       if (!selectedImage) {
           showError("กรุณาแนบรูป", "ต้องถ่ายรูปหน้างานเพื่อยืนยันการส่งงาน");
@@ -91,29 +87,14 @@ function MyJobsPage() {
 
       setUploading(true);
       try {
-          // 1. อัปโหลดรูปไปที่ Storage
           const fileExt = selectedImage.name.split('.').pop();
-          const fileName = `${selectedJob.id}_${Date.now()}.${fileExt}`; // ตั้งชื่อไฟล์ไม่ให้ซ้ำ
-          const { error: uploadError } = await supabase.storage
-              .from('job-evidence') // ชื่อ Bucket ที่เราสร้าง
-              .upload(fileName, selectedImage);
-
+          const fileName = `${selectedJob.id}_${Date.now()}.${fileExt}`;
+          const { error: uploadError } = await supabase.storage.from('job-evidence').upload(fileName, selectedImage);
           if (uploadError) throw uploadError;
 
-          // 2. ขอ Public URL ของรูป
-          const { data: { publicUrl } } = supabase.storage
-              .from('job-evidence')
-              .getPublicUrl(fileName);
+          const { data: { publicUrl } } = supabase.storage.from('job-evidence').getPublicUrl(fileName);
 
-          // 3. อัปเดต Database (เปลี่ยนสถานะ + บันทึกลิงก์รูป)
-          const { error: dbError } = await supabase
-              .from('Jobs')
-              .update({ 
-                  status: 'WAITING_REVIEW', 
-                  image_url: publicUrl 
-              })
-              .eq('id', selectedJob.id);
-
+          const { error: dbError } = await supabase.from('Jobs').update({ status: 'WAITING_REVIEW', image_url: publicUrl }).eq('id', selectedJob.id);
           if (dbError) throw dbError;
 
           showSuccess("ส่งงานเรียบร้อย!", "แอดมินได้รับข้อมูลแล้ว");
@@ -135,10 +116,11 @@ function MyJobsPage() {
           <Table>
             <TableHead sx={{ bgcolor: '#424242' }}>
               <TableRow>
-                <TableCell sx={{ color: 'white' }}>ชื่องาน</TableCell>
-                <TableCell sx={{ color: 'white' }}>สถานะ</TableCell>
-                <TableCell sx={{ color: 'white' }}>เวลา</TableCell>
-                <TableCell align="center" sx={{ color: 'white' }}>จัดการ</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ชื่องาน</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ลูกค้า</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>สถานะ</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>เวลา</TableCell>
+                <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>จัดการ</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -150,6 +132,14 @@ function MyJobsPage() {
                            <LocationOn fontSize="small" />
                            <Typography variant="caption">{job.location || '-'}</Typography>
                       </Stack>
+                  </TableCell>
+                  <TableCell>
+                      {job.customer_name ? (
+                          <Box>
+                              <Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography>
+                              <Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography>
+                          </Box>
+                      ) : "-"}
                   </TableCell>
                   <TableCell>
                       <Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} />
@@ -165,13 +155,12 @@ function MyJobsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {jobs.length === 0 && <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: 'text.secondary' }}>คุณยังไม่มีงานที่ได้รับมอบหมาย</TableCell></TableRow>}
+              {jobs.length === 0 && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>คุณยังไม่มีงานที่ได้รับมอบหมาย</TableCell></TableRow>}
             </TableBody>
           </Table>
         </TableContainer>
       </Paper>
 
-      {/* Dialog รายละเอียด & ส่งงาน */}
       <Dialog open={openDetailDialog} onClose={() => !uploading && setOpenDetailDialog(false)} fullWidth maxWidth="sm">
           <Box sx={{ bgcolor: selectedJob ? getStatusColor(selectedJob.status) : 'grey', height: 8, width: '100%' }} />
           <DialogTitle sx={{ pb: 1 }}>
@@ -185,6 +174,18 @@ function MyJobsPage() {
           <DialogContent sx={{ pt: 3 }}>
               {selectedJob && (
                   <Stack spacing={3}>
+                      <Box sx={{ p: 2, bgcolor: '#FFF3E0', borderRadius: 2, border: '1px solid #FFE0B2' }}>
+                          <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                              <PersonIcon color="warning" />
+                              <Typography variant="subtitle2" fontWeight="bold">ติดต่อลูกค้า</Typography>
+                          </Stack>
+                          <Typography variant="body1">คุณ {selectedJob.customer_name || '-'}</Typography>
+                          <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                              <PhoneIcon fontSize="small" color="action" />
+                              <Typography variant="body2" color="text.secondary">{selectedJob.customer_phone || '-'}</Typography>
+                          </Stack>
+                      </Box>
+
                       <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2, border: '1px solid #eee' }}>
                           <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "- ไม่มีรายละเอียดเพิ่มเติม -"}</Typography>
                       </Box>
@@ -193,7 +194,6 @@ function MyJobsPage() {
                           <Typography variant="body2" fontWeight={600}>{selectedJob.start_formatted} - {selectedJob.end_formatted}</Typography>
                       </Box>
 
-                      {/* --- ส่วนแสดงรูปภาพ (ถ้ามี) --- */}
                       {selectedJob.image_url && (
                           <Box>
                               <Typography variant="subtitle2" gutterBottom>รูปภาพส่งงาน:</Typography>
@@ -203,21 +203,14 @@ function MyJobsPage() {
 
                       <Divider />
 
-                      {/* --- ส่วนจัดการ Workflow --- */}
                       <Box sx={{ textAlign: 'center' }}>
-                        
-                        {/* 1. งานยังไม่เริ่ม */}
                         {selectedJob.status === 'PENDING' && (
-                            <Button variant="contained" color="warning" size="large" startIcon={<PlayIcon />} onClick={handleStartJob}>
-                                เริ่มปฏิบัติงาน
-                            </Button>
+                            <Button variant="contained" color="warning" size="large" startIcon={<PlayIcon />} onClick={handleStartJob}>เริ่มปฏิบัติงาน</Button>
                         )}
                         
-                        {/* 2. กำลังทำ -> ต้องอัปโหลดรูปก่อนส่ง */}
                         {selectedJob.status === 'IN_PROGRESS' && (
                             <Box sx={{ p: 2, border: '2px dashed #ccc', borderRadius: 2, bgcolor: '#FAFAFA' }}>
                                 <Typography variant="subtitle2" gutterBottom color="primary">📸 อัปโหลดรูปผลงานเพื่อส่งงาน</Typography>
-                                
                                 {previewUrl ? (
                                     <Box sx={{ mb: 2, position: 'relative' }}>
                                         <img src={previewUrl} alt="Preview" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8 }} />
@@ -229,20 +222,11 @@ function MyJobsPage() {
                                         <input hidden accept="image/*" type="file" onChange={handleImageSelect} />
                                     </Button>
                                 )}
-
-                                <Button 
-                                    variant="contained" fullWidth size="large"
-                                    sx={{ bgcolor: '#0288D1', color: 'white' }} 
-                                    startIcon={uploading ? <CircularProgress size={20} color="inherit"/> : <DoneIcon />}
-                                    disabled={!selectedImage || uploading} // ถ้าไม่มีรูป ห้ามกด
-                                    onClick={handleSubmitJob}
-                                >
+                                <Button variant="contained" fullWidth size="large" sx={{ bgcolor: '#0288D1', color: 'white' }} startIcon={uploading ? <CircularProgress size={20} color="inherit"/> : <DoneIcon />} disabled={!selectedImage || uploading} onClick={handleSubmitJob}>
                                     {uploading ? 'กำลังอัปโหลด...' : 'ยืนยันส่งงาน'}
                                 </Button>
                             </Box>
                         )}
-
-                        {/* 3. สถานะอื่นๆ */}
                         {selectedJob.status === 'WAITING_REVIEW' && <Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" />}
                         {selectedJob.status === 'APPROVED' && <Chip label="งานเสร็จสมบูรณ์แล้ว" color="success" />}
                       </Box>

@@ -9,7 +9,8 @@ import {
   CalendarMonth as CalendarIcon, List as ListIcon, CheckCircle as CheckIcon, 
   Cancel as CancelIcon, PlayArrow as PlayIcon, Done as DoneIcon,
   Edit as EditIcon, Delete as DeleteIcon,
-  Add as AddIcon, LocationOn as LocationIcon, Image as ImageIcon
+  Add as AddIcon, LocationOn as LocationIcon, Image as ImageIcon,
+  Person as PersonIcon, Phone as PhoneIcon
 } from '@mui/icons-material'; 
 import { supabase } from '../supabaseClient';
 import FullCalendar from '@fullcalendar/react';
@@ -39,14 +40,14 @@ const getStatusLabel = (status: string) => {
 };
 
 function DashboardPage() {
-  // ลบ useNavigate ออก เพราะไม่ได้ใช้แล้ว (Layout จัดการให้)
+  // ลบ navigate ออก เพราะ Layout จัดการเรื่อง redirect ให้แล้ว
   const [profile, setProfile] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]); 
   const [users, setUsers] = useState<any[]>([]);
   const [viewMode, setViewMode] = useState<'calendar' | 'table'>('table'); 
 
   const [openCreateDialog, setOpenCreateDialog] = useState(false);
-  const [newJob, setNewJob] = useState({ title: '', location: '', description: '', start_time: '', end_time: '', assigned_to: '' });
+  const [newJob, setNewJob] = useState({ title: '', location: '', description: '', start_time: '', end_time: '', assigned_to: '', customer_name: '', customer_phone: '' });
   
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
@@ -57,10 +58,10 @@ function DashboardPage() {
   useEffect(() => {
     const fetchData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return; // Layout จะจัดการดีดออกถ้าไม่มี user
+      if (!user) return;
 
       const { data: profileData } = await supabase.from('Profiles').select('*').eq('user_id', user.id).single();
-      if (profileData) setProfile(profileData);
+      setProfile(profileData);
 
       fetchJobs();
       fetchUsers();
@@ -82,17 +83,43 @@ function DashboardPage() {
 
   const handleCreateJob = async () => {
     if (!newJob.title || !newJob.start_time || !newJob.end_time || !newJob.location) {
-      showError("ข้อมูลไม่ครบ", "กรุณากรอกข้อมูลที่จำเป็น"); return;
+      showError("ข้อมูลไม่ครบ", "กรุณากรอกข้อมูลที่จำเป็นให้ครบถ้วน"); return;
     }
     if (!(await confirmAction('ยืนยันการมอบหมาย', `สร้างงาน "${newJob.title}"?`))) return;
-    const { error } = await supabase.from('Jobs').insert([{ title: newJob.title, location: newJob.location, description: newJob.description, start_time: new Date(newJob.start_time).toISOString(), end_time: new Date(newJob.end_time).toISOString(), status: 'PENDING', assigned_to: newJob.assigned_to || null }]);
-    if (!error) { showSuccess("สร้างงานสำเร็จ"); setOpenCreateDialog(false); fetchJobs(); setNewJob({ title: '', location: '', description: '', start_time: '', end_time: '', assigned_to: '' }); } else { showError("เกิดข้อผิดพลาด", error.message); }
+
+    const { error } = await supabase.from('Jobs').insert([{
+        title: newJob.title, 
+        location: newJob.location, 
+        description: newJob.description,
+        start_time: new Date(newJob.start_time).toISOString(),
+        end_time: new Date(newJob.end_time).toISOString(),
+        status: 'PENDING', 
+        assigned_to: newJob.assigned_to || null,
+        customer_name: newJob.customer_name,
+        customer_phone: newJob.customer_phone
+    }]);
+
+    if (!error) {
+      showSuccess("สร้างงานสำเร็จ"); setOpenCreateDialog(false); fetchJobs();
+      setNewJob({ title: '', location: '', description: '', start_time: '', end_time: '', assigned_to: '', customer_name: '', customer_phone: '' });
+    } else { showError("เกิดข้อผิดพลาด", error.message); }
   };
 
   const handleUpdateJob = async () => {
-    if (!(await confirmAction('บันทึกการแก้ไข?', 'ข้อมูลเดิมจะถูกเปลี่ยนแปลง'))) return;
-    const { error } = await supabase.from('Jobs').update({ title: editJob.title, location: editJob.location, description: editJob.description, start_time: new Date(editJob.start_time).toISOString(), end_time: new Date(editJob.end_time).toISOString(), assigned_to: editJob.assigned_to || null }).eq('id', editJob.id);
-    if (!error) { showSuccess("แก้ไขสำเร็จ"); setOpenEditDialog(false); setOpenDetailDialog(false); fetchJobs(); } else { showError("เกิดข้อผิดพลาด", error.message); }
+      if (!(await confirmAction('บันทึกการแก้ไข?', 'ข้อมูลเดิมจะถูกเปลี่ยนแปลง'))) return;
+      const { error } = await supabase.from('Jobs').update({
+            title: editJob.title, 
+            location: editJob.location, 
+            description: editJob.description,
+            start_time: new Date(editJob.start_time).toISOString(),
+            end_time: new Date(editJob.end_time).toISOString(),
+            assigned_to: editJob.assigned_to || null,
+            customer_name: editJob.customer_name,
+            customer_phone: editJob.customer_phone
+        }).eq('id', editJob.id);
+      if (!error) {
+          showSuccess("แก้ไขสำเร็จ"); setOpenEditDialog(false); setOpenDetailDialog(false); fetchJobs();
+      } else { showError("เกิดข้อผิดพลาด", error.message); }
   };
 
   const handleDeleteJob = async () => { 
@@ -110,15 +137,22 @@ function DashboardPage() {
 
   const calendarEvents = jobs.map((job: any) => ({ id: job.id, title: job.title, start: job.start_time, end: job.end_time, color: getStatusColor(job.status), extendedProps: { ...job } }));
   const handleEventClick = (info: any) => { 
-    setSelectedJob({ ...info.event.extendedProps, start_formatted: new Date(info.event.extendedProps.start_time).toLocaleString('th-TH'), end_formatted: new Date(info.event.extendedProps.end_time).toLocaleString('th-TH') }); 
-    setOpenDetailDialog(true); 
+    openJobDetail(info.event.extendedProps); 
   };
   const openJobDetail = (job: any) => { 
-    setSelectedJob({ ...job, start_formatted: new Date(job.start_time).toLocaleString('th-TH'), end_formatted: new Date(job.end_time).toLocaleString('th-TH') }); 
+    setSelectedJob({ 
+        ...job, 
+        start_formatted: new Date(job.start_time).toLocaleString('th-TH'), 
+        end_formatted: new Date(job.end_time).toLocaleString('th-TH') 
+    }); 
     setOpenDetailDialog(true); 
   }
   const openEditForm = () => { 
-      setEditJob({ ...selectedJob, start_time: selectedJob.start_time.substring(0, 16), end_time: selectedJob.end_time.substring(0, 16) }); 
+      setEditJob({ 
+          ...selectedJob, 
+          start_time: selectedJob.start_time.substring(0, 16), 
+          end_time: selectedJob.end_time.substring(0, 16) 
+      }); 
       setOpenEditDialog(true); 
   };
 
@@ -134,7 +168,6 @@ function DashboardPage() {
                 <ToggleButton value="table"><ListIcon /> ตาราง</ToggleButton>
                 <ToggleButton value="calendar"><CalendarIcon /> ปฏิทิน</ToggleButton>
             </ToggleButtonGroup>
-            {/* ปุ่มสร้างงาน (เฉพาะ Admin) */}
             {profile?.role === 'ADMIN' && (
                 <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpenCreateDialog(true)} sx={{ px: 3, bgcolor: '#D32F2F' }}>สร้างงานใหม่</Button>
             )}
@@ -152,6 +185,7 @@ function DashboardPage() {
                     <TableHead sx={{ bgcolor: '#FAFAFA' }}>
                         <TableRow>
                             <TableCell sx={{ fontWeight: 'bold' }}>ชื่องาน</TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>ลูกค้า</TableCell>
                             <TableCell sx={{ fontWeight: 'bold' }}>สถานที่</TableCell>
                             <TableCell sx={{ fontWeight: 'bold' }}>ผู้รับผิดชอบ</TableCell>
                             <TableCell sx={{ fontWeight: 'bold' }}>สถานะ</TableCell>
@@ -163,6 +197,14 @@ function DashboardPage() {
                         {jobs.map((job) => (
                             <TableRow key={job.id} hover>
                                 <TableCell sx={{ fontWeight: 600 }}>{job.title}</TableCell>
+                                <TableCell>
+                                    {job.customer_name ? (
+                                        <Box>
+                                            <Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography>
+                                        </Box>
+                                    ) : "-"}
+                                </TableCell>
                                 <TableCell><Stack direction="row" alignItems="center" spacing={0.5}><LocationIcon fontSize="small" color="action" /><Typography variant="body2">{job.location || '-'}</Typography></Stack></TableCell>
                                 <TableCell>{job.Profiles ? (<Chip avatar={<Avatar sx={{ width: 24, height: 24 }}>{job.Profiles.nickname[0]}</Avatar>} label={job.Profiles.nickname} size="small" variant="outlined" />) : "-"}</TableCell>
                                 <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} /></TableCell>
@@ -180,20 +222,27 @@ function DashboardPage() {
       </Paper>
       
       {/* Dialog สร้างงาน */}
-      <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} fullWidth maxWidth="sm">
+      <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} fullWidth maxWidth="md">
          <DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white' }}>สร้างงานใหม่</DialogTitle>
          <DialogContent sx={{ pt: 3 }}>
              <Stack spacing={2} sx={{ mt: 1 }}>
-                 <TextField label="ชื่องาน" fullWidth value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} />
-                 <TextField label="สถานที่" fullWidth value={newJob.location} onChange={e => setNewJob({...newJob, location: e.target.value})} />
+                 <TextField label="ชื่องาน" fullWidth value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} placeholder="เช่น ล้างแอร์, ซ่อมไฟ" />
+                 
+                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField label="ชื่อลูกค้า" fullWidth value={newJob.customer_name} onChange={e => setNewJob({...newJob, customer_name: e.target.value})} InputProps={{ startAdornment: <PersonIcon color="action" sx={{ mr: 1 }} /> }} />
+                    <TextField label="เบอร์โทรศัพท์" fullWidth value={newJob.customer_phone} onChange={e => setNewJob({...newJob, customer_phone: e.target.value})} InputProps={{ startAdornment: <PhoneIcon color="action" sx={{ mr: 1 }} /> }} />
+                 </Stack>
+
+                 <TextField label="สถานที่ปฏิบัติงาน" fullWidth value={newJob.location} onChange={e => setNewJob({...newJob, location: e.target.value})} InputProps={{ startAdornment: <LocationIcon color="action" sx={{ mr: 1 }} /> }} />
+                 
                  <FormControl fullWidth>
-                    <InputLabel>มอบหมายให้</InputLabel>
-                    <Select value={newJob.assigned_to} label="มอบหมายให้" onChange={e => setNewJob({...newJob, assigned_to: e.target.value})}>
+                    <InputLabel>มอบหมายให้ (ผู้รับผิดชอบ)</InputLabel>
+                    <Select value={newJob.assigned_to} label="มอบหมายให้ (ผู้รับผิดชอบ)" onChange={e => setNewJob({...newJob, assigned_to: e.target.value})}>
                         <MenuItem value=""><em>ไม่ระบุ</em></MenuItem>
                         {users.map(u => <MenuItem key={u.user_id} value={u.user_id}>{u.nickname} ({u.department})</MenuItem>)}
                     </Select>
                  </FormControl>
-                 <TextField label="รายละเอียด" multiline rows={3} fullWidth value={newJob.description} onChange={e => setNewJob({...newJob, description: e.target.value})} />
+                 <TextField label="รายละเอียดเพิ่มเติม" multiline rows={3} fullWidth value={newJob.description} onChange={e => setNewJob({...newJob, description: e.target.value})} />
                  <Stack direction="row" spacing={2}>
                     <TextField type="datetime-local" label="เวลาเริ่ม" fullWidth InputLabelProps={{shrink:true}} value={newJob.start_time} onChange={e => setNewJob({...newJob, start_time: e.target.value})} />
                     <TextField type="datetime-local" label="จบ" fullWidth InputLabelProps={{shrink:true}} value={newJob.end_time} onChange={e => setNewJob({...newJob, end_time: e.target.value})} />
@@ -207,12 +256,18 @@ function DashboardPage() {
       </Dialog>
 
       {/* Dialog แก้ไขงาน */}
-       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} fullWidth maxWidth="sm">
+       <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} fullWidth maxWidth="md">
          <DialogTitle sx={{ bgcolor: '#455A64', color: 'white' }}>แก้ไขงาน</DialogTitle>
          <DialogContent sx={{ pt: 3 }}>
             {editJob && (
              <Stack spacing={2} sx={{ mt: 1 }}>
                  <TextField label="ชื่องาน" fullWidth value={editJob.title} onChange={e => setEditJob({...editJob, title: e.target.value})} />
+                 
+                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                    <TextField label="ชื่อลูกค้า" fullWidth value={editJob.customer_name} onChange={e => setEditJob({...editJob, customer_name: e.target.value})} />
+                    <TextField label="เบอร์โทรศัพท์" fullWidth value={editJob.customer_phone} onChange={e => setEditJob({...editJob, customer_phone: e.target.value})} />
+                 </Stack>
+
                  <TextField label="สถานที่" fullWidth value={editJob.location} onChange={e => setEditJob({...editJob, location: e.target.value})} />
                  <FormControl fullWidth>
                     <InputLabel>มอบหมายให้</InputLabel>
@@ -245,6 +300,18 @@ function DashboardPage() {
           <DialogContent>
               {selectedJob && (
                   <Stack spacing={3} sx={{ mt: 1 }}>
+                      <Box sx={{ p: 2, bgcolor: '#FFF3E0', borderRadius: 2, border: '1px solid #FFE0B2' }}>
+                          <Stack direction="row" spacing={1} alignItems="center" mb={1}>
+                              <PersonIcon color="warning" />
+                              <Typography variant="subtitle2" fontWeight="bold">ข้อมูลลูกค้า</Typography>
+                          </Stack>
+                          <Typography variant="body1">คุณ {selectedJob.customer_name || '-'}</Typography>
+                          <Stack direction="row" spacing={1} alignItems="center" mt={0.5}>
+                              <PhoneIcon fontSize="small" color="action" />
+                              <Typography variant="body2" color="text.secondary">{selectedJob.customer_phone || '-'}</Typography>
+                          </Stack>
+                      </Box>
+
                       <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2 }}>
                           <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "-"}</Typography>
                       </Box>
