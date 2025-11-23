@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Typography, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Stack,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress, TextField, InputAdornment
 } from '@mui/material';
 import { supabase } from '../supabaseClient';
 import { 
   LocationOn, AccessTime, Visibility, 
   PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
-  Person as PersonIcon, Phone as PhoneIcon, 
-  Cancel as CancelIcon // <--- เพิ่มไอคอน Cancel
+  Person as PersonIcon, Phone as PhoneIcon,
+  Cancel as CancelIcon, Search as SearchIcon
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
@@ -17,6 +17,7 @@ function MyJobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [uploading, setUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
@@ -29,8 +30,23 @@ function MyJobsPage() {
   const fetchMyJobs = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase.from('Jobs').select('*').eq('assigned_to', user.id).order('id', { ascending: false });
-    setJobs(data || []);
+    
+    const { data, error } = await supabase
+      .from('JobAssignments')
+      .select(`
+        job_id,
+        Jobs:job_id (*)
+      `)
+      .eq('user_id', user.id)
+      .order('id', { ascending: false });
+      
+    if (error) {
+        console.error(error);
+    } else {
+        const myJobList = data.map((item: any) => item.Jobs).filter((j: any) => j !== null);
+        myJobList.sort((a:any, b:any) => b.id - a.id);
+        setJobs(myJobList);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -52,6 +68,16 @@ function MyJobsPage() {
         default: return status;
     }
   };
+
+  const filteredJobs = jobs.filter((job) => {
+    const query = searchQuery.toLowerCase();
+    return (
+        (job.title && job.title.toLowerCase().includes(query)) ||
+        (job.location && job.location.toLowerCase().includes(query)) ||
+        (job.customer_name && job.customer_name.toLowerCase().includes(query)) ||
+        (job.customer_phone && job.customer_phone.toLowerCase().includes(query))
+    );
+  });
 
   const openJobDetail = (job: any) => {
     setSelectedJob({
@@ -109,13 +135,9 @@ function MyJobsPage() {
       }
   };
 
-  // --- [NEW] ฟังก์ชันยกเลิกการส่งงาน ---
   const handleCancelSubmission = async () => {
       if (!(await confirmAction('ยกเลิกการส่งงาน?', 'สถานะจะกลับไปเป็น "กำลังดำเนินการ" เพื่อให้คุณแก้ไขรูปภาพหรือข้อมูลได้', 'ใช่, ยกเลิกการส่ง'))) return;
-
-      // ย้อนสถานะกลับไปเป็น IN_PROGRESS
       const { error } = await supabase.from('Jobs').update({ status: 'IN_PROGRESS' }).eq('id', selectedJob.id);
-      
       if (!error) {
           showSuccess("ยกเลิกการส่งงานแล้ว", "คุณสามารถแก้ไขและส่งใหม่ได้ทันที");
           setOpenDetailDialog(false);
@@ -127,7 +149,24 @@ function MyJobsPage() {
 
   return (
     <Layout title="งานของฉัน">
-      <Typography variant="h4" sx={{ mb: 3 }}>งานที่ได้รับมอบหมาย</Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', sm: 'center' }} mb={3} spacing={2}>
+        <Typography variant="h4">งานที่ได้รับมอบหมาย</Typography>
+        <TextField 
+            placeholder="ค้นหางาน..." 
+            size="small" 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+                startAdornment: (
+                    <InputAdornment position="start">
+                        <SearchIcon color="action" />
+                    </InputAdornment>
+                ),
+            }}
+            sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 250 }}
+        />
+      </Stack>
+
       <Paper sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: 3 }}>
         <TableContainer>
           <Table>
@@ -141,7 +180,7 @@ function MyJobsPage() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {jobs.map((job) => (
+              {filteredJobs.map((job) => (
                 <TableRow key={job.id} hover>
                   <TableCell>
                       <Typography fontWeight={600}>{job.title}</Typography>
@@ -172,7 +211,13 @@ function MyJobsPage() {
                   </TableCell>
                 </TableRow>
               ))}
-              {jobs.length === 0 && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>คุณยังไม่มีงานที่ได้รับมอบหมาย</TableCell></TableRow>}
+              {filteredJobs.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                        {searchQuery ? 'ไม่พบงานที่ค้นหา' : 'คุณยังไม่มีงานที่ได้รับมอบหมาย'}
+                    </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </TableContainer>
@@ -245,22 +290,12 @@ function MyJobsPage() {
                             </Box>
                         )}
 
-                        {/* --- [NEW] ส่วนปุ่มยกเลิกการส่งงาน --- */}
                         {selectedJob.status === 'WAITING_REVIEW' && (
                             <Stack spacing={2} alignItems="center">
                                 <Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" />
-                                <Button 
-                                    variant="text" 
-                                    color="error" 
-                                    size="small"
-                                    startIcon={<CancelIcon />}
-                                    onClick={handleCancelSubmission}
-                                >
-                                    ยกเลิกการส่งงาน (แก้ไขใหม่)
-                                </Button>
+                                <Button variant="text" color="error" size="small" startIcon={<CancelIcon />} onClick={handleCancelSubmission}>ยกเลิกการส่งงาน (แก้ไขใหม่)</Button>
                             </Stack>
                         )}
-                        {/* ------------------------------------- */}
 
                         {selectedJob.status === 'APPROVED' && <Chip label="งานเสร็จสมบูรณ์แล้ว" color="success" />}
                       </Box>
