@@ -7,23 +7,21 @@ import { supabase } from '../supabaseClient';
 import { 
   LocationOn, AccessTime, Visibility, 
   PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
-  Person as PersonIcon, Phone as PhoneIcon, Image as ImageIcon, // <--- ใช้ ImageIcon แล้ว
+  Person as PersonIcon, Phone as PhoneIcon, Image as ImageIcon,
   Cancel as CancelIcon, Search as SearchIcon, Map as MapIcon, Assignment as AssignmentIcon
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
-import SignatureCanvas from 'react-signature-canvas'; 
+import SignatureCanvas from 'react-signature-canvas';
 
 function MyJobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  
   const [uploading, setUploading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
   const [openFeedback, setOpenFeedback] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const sigPad = useRef<any>(null);
@@ -45,12 +43,8 @@ function MyJobsPage() {
     setJobs(myJobList);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) { case 'PENDING': return '#D32F2F'; case 'IN_PROGRESS': return '#F57C00'; case 'WAITING_REVIEW': return '#1976D2'; case 'APPROVED': return '#388E3C'; default: return '#757575'; }
-  };
-  const getStatusLabel = (status: string) => {
-    switch (status) { case 'PENDING': return 'รอดำเนินการ'; case 'IN_PROGRESS': return 'กำลังดำเนินการ'; case 'WAITING_REVIEW': return 'รอตรวจงาน'; case 'APPROVED': return 'เสร็จสมบูรณ์'; default: return status; }
-  };
+  const getStatusColor = (status: string) => { switch (status) { case 'PENDING': return '#D32F2F'; case 'IN_PROGRESS': return '#F57C00'; case 'WAITING_REVIEW': return '#1976D2'; case 'APPROVED': return '#388E3C'; default: return '#757575'; } };
+  const getStatusLabel = (status: string) => { switch (status) { case 'PENDING': return 'รอดำเนินการ'; case 'IN_PROGRESS': return 'กำลังดำเนินการ'; case 'WAITING_REVIEW': return 'รอตรวจงาน'; case 'APPROVED': return 'เสร็จสมบูรณ์'; default: return status; } };
 
   const filteredJobs = jobs.filter((job) => {
     const query = searchQuery.toLowerCase();
@@ -78,11 +72,8 @@ function MyJobsPage() {
 
   const handlePreSubmit = () => {
       if (!selectedImage) { showError("กรุณาแนบรูป", "ต้องถ่ายรูปหน้างานเพื่อยืนยัน"); return; }
-      if (selectedJob.is_feedback_required) {
-          setOpenDetailDialog(false); setOpenFeedback(true); setActiveStep(0);
-      } else {
-          handleSubmitJob();
-      }
+      if (selectedJob.is_feedback_required) { setOpenDetailDialog(false); setOpenFeedback(true); setActiveStep(0); } 
+      else { handleSubmitJob(); }
   };
 
   const handleSubmitFeedbackAndJob = async () => {
@@ -105,11 +96,12 @@ function MyJobsPage() {
           const fileExt = selectedImage!.name.split('.').pop(); const fileName = `${selectedJob.id}_${Date.now()}.${fileExt}`;
           await supabase.storage.from('job-evidence').upload(fileName, selectedImage!);
           const { data: { publicUrl } } = supabase.storage.from('job-evidence').getPublicUrl(fileName);
-          await supabase.from('Jobs').update({ status: 'WAITING_REVIEW', image_url: publicUrl }).eq('id', selectedJob.id);
+          const { error: dbError } = await supabase.from('Jobs').update({ status: 'WAITING_REVIEW', image_url: publicUrl }).eq('id', selectedJob.id);
+          if (dbError) throw dbError;
           showSuccess("ส่งงานเรียบร้อย!", "ขอบคุณครับ"); setOpenDetailDialog(false); fetchMyJobs();
       } catch (error: any) { showError("เกิดข้อผิดพลาด", error.message); } finally { setUploading(false); }
   };
-
+  
   const handleCancelSubmission = async () => {
       if (!(await confirmAction('ยกเลิกการส่งงาน?', 'สถานะจะกลับไปเป็น "กำลังดำเนินการ" เพื่อให้คุณแก้ไขรูปภาพหรือข้อมูลได้', 'ใช่, ยกเลิกการส่ง'))) return;
       const { error } = await supabase.from('Jobs').update({ status: 'IN_PROGRESS' }).eq('id', selectedJob.id);
@@ -117,9 +109,7 @@ function MyJobsPage() {
   };
 
   const renderStepContent = (step: number) => {
-      const RatingRow = ({ label, val, setter }: any) => (
-          <Box display="flex" justifyContent="space-between" alignItems="center" my={1}><Typography variant="body2">{label}</Typography><Rating value={val} onChange={(e, v) => setFeedback({...feedback, [setter]: v})} /></Box>
-      );
+      const RatingRow = ({ label, val, setter }: any) => (<Box display="flex" justifyContent="space-between" alignItems="center" my={1}><Typography variant="body2">{label}</Typography><Rating value={val} onChange={(e, v) => setFeedback({...feedback, [setter]: v})} /></Box>);
       switch (step) {
           case 0: return (<Box><Typography variant="h6" gutterBottom color="primary">1. บริการ</Typography><RatingRow label="ความสะดวก" val={feedback.contact_convenience} setter="contact_convenience" /><RatingRow label="ความรวดเร็ว" val={feedback.service_speed} setter="service_speed" /><RatingRow label="ระยะเวลาซ่อม" val={feedback.repair_time} setter="repair_time" /><RatingRow label="คุณภาพงาน" val={feedback.repair_quality} setter="repair_quality" /><RatingRow label="การตรวจสอบ" val={feedback.testing_check} setter="testing_check" /></Box>);
           case 1: return (<Box><Typography variant="h6" gutterBottom color="primary">2. เจ้าหน้าที่</Typography><RatingRow label="มารยาท" val={feedback.politeness} setter="politeness" /><RatingRow label="ความเชี่ยวชาญ" val={feedback.expertise} setter="expertise" /><RatingRow label="ความเข้าใจ" val={feedback.understanding} setter="understanding" /><RatingRow label="คำแนะนำ" val={feedback.advice} setter="advice" /><RatingRow label="การแจ้งเตือน" val={feedback.notification} setter="notification" /></Box>);
@@ -152,7 +142,7 @@ function MyJobsPage() {
                   <TableCell>
                       <Typography fontWeight={600}>{job.title}</Typography>
                       <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary"><LocationOn fontSize="small" color="action" /><Typography variant="caption">{job.location || '-'}</Typography></Stack>
-                      {job.is_feedback_required && <Chip label="ต้องประเมิน" color="warning" size="small" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />}
+                      {job.is_feedback_required && <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />}
                   </TableCell>
                   <TableCell>{job.customer_name ? <Box><Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography><Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography></Box> : "-"}</TableCell>
                   <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} /></TableCell>
@@ -176,30 +166,39 @@ function MyJobsPage() {
                   <Stack spacing={3}>
                       {selectedJob.map_url && <Button variant="outlined" color="primary" startIcon={<MapIcon />} href={selectedJob.map_url} target="_blank">ดูแผนที่</Button>}
                       <Box sx={{ p: 2, bgcolor: '#FFF3E0', borderRadius: 2, border: '1px solid #FFE0B2' }}><Stack direction="row" spacing={1} alignItems="center" mb={1}><PersonIcon color="warning" /><Typography variant="subtitle2" fontWeight="bold">ติดต่อลูกค้า</Typography></Stack><Typography variant="body1">คุณ {selectedJob.customer_name || '-'}</Typography><Stack direction="row" spacing={1} alignItems="center" mt={0.5}><PhoneIcon fontSize="small" color="action" /><Typography variant="body2" color="text.secondary">{selectedJob.customer_phone || '-'}</Typography></Stack></Box>
-                      <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2, border: '1px solid #eee' }}><Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "- ไม่มีรายละเอียดเพิ่มเติม -"}</Typography></Box>
+                      <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2, border: '1px solid #eee' }}><Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "-"}</Typography></Box>
                       {selectedJob.image_url && (<Box><Stack direction="row" alignItems="center" spacing={1} mb={1}><ImageIcon color="action" /><Typography variant="subtitle2">รูปภาพส่งงาน:</Typography></Stack><img src={selectedJob.image_url} alt="หลักฐาน" style={{ width: '100%', borderRadius: 8 }} /></Box>)}
                       <Divider />
                       <Box sx={{ textAlign: 'center' }}>
-                        {selectedJob.status === 'PENDING' && <Button variant="contained" color="warning" size="large" startIcon={<PlayIcon />} onClick={handleStartJob}>เริ่มปฏิบัติงาน</Button>}
-                        {selectedJob.status === 'IN_PROGRESS' && (
-                            <Box sx={{ p: 2, border: '2px dashed #ccc', borderRadius: 2, bgcolor: '#FAFAFA' }}>
-                                <Typography variant="subtitle2" gutterBottom color="primary">📸 อัปโหลดรูปผลงานเพื่อส่งงาน</Typography>
-                                {previewUrl ? (
-                                    <Box sx={{ mb: 2, position: 'relative' }}><img src={previewUrl} alt="Preview" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8 }} /><Button size="small" color="error" onClick={() => {setPreviewUrl(null); setSelectedImage(null);}}>แยกลบรูป</Button></Box>
-                                ) : (
-                                    <Button variant="outlined" component="label" startIcon={<CloudUploadIcon />} sx={{ mb: 2 }}>เลือกรูปภาพ<input hidden accept="image/*" type="file" onChange={handleImageSelect} /></Button>
+                        {/* [Rule 2] LOCK JOB if Approved */}
+                        {selectedJob.status === 'APPROVED' ? (
+                            <Chip label="งานเสร็จสมบูรณ์แล้ว (ไม่สามารถแก้ไขได้)" color="success" icon={<DoneIcon />} />
+                        ) : (
+                            <>
+                                {/* [Rule 1.2] Staff buttons */}
+                                {selectedJob.status === 'PENDING' && <Button variant="contained" color="warning" size="large" startIcon={<PlayIcon />} onClick={handleStartJob}>เริ่มปฏิบัติงาน</Button>}
+                                {selectedJob.status === 'IN_PROGRESS' && (
+                                    <Box sx={{ p: 2, border: '2px dashed #ccc', borderRadius: 2, bgcolor: '#FAFAFA' }}>
+                                        <Typography variant="subtitle2" gutterBottom color="primary">📸 อัปโหลดรูปผลงานเพื่อส่งงาน</Typography>
+                                        {previewUrl ? (
+                                            <Box sx={{ mb: 2, position: 'relative' }}><img src={previewUrl} alt="Preview" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8 }} /><Button size="small" color="error" onClick={() => {setPreviewUrl(null); setSelectedImage(null);}}>แยกลบรูป</Button></Box>
+                                        ) : (
+                                            <Button variant="outlined" component="label" startIcon={<CloudUploadIcon />} sx={{ mb: 2 }}>เลือกรูปภาพ<input hidden accept="image/*" type="file" onChange={handleImageSelect} /></Button>
+                                        )}
+                                        <Button variant="contained" fullWidth size="large" sx={{ bgcolor: '#0288D1', color: 'white' }} startIcon={uploading ? <CircularProgress size={20} color="inherit"/> : <DoneIcon />} disabled={!selectedImage || uploading} onClick={handlePreSubmit}>{uploading ? 'กำลังอัปโหลด...' : 'ยืนยันส่งงาน'}</Button>
+                                    </Box>
                                 )}
-                                <Button variant="contained" fullWidth size="large" sx={{ bgcolor: '#0288D1', color: 'white' }} startIcon={uploading ? <CircularProgress size={20} color="inherit"/> : <DoneIcon />} disabled={!selectedImage || uploading} onClick={handlePreSubmit}>{uploading ? 'กำลังอัปโหลด...' : 'ยืนยันส่งงาน'}</Button>
-                            </Box>
+                                {/* [Rule 2] Cancel Submission */}
+                                {selectedJob.status === 'WAITING_REVIEW' && <Stack spacing={2} alignItems="center"><Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" /><Button variant="text" color="error" size="small" startIcon={<CancelIcon />} onClick={handleCancelSubmission}>ยกเลิกการส่งงาน (แก้ไขใหม่)</Button></Stack>}
+                            </>
                         )}
-                        {selectedJob.status === 'WAITING_REVIEW' && <Stack spacing={2} alignItems="center"><Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" /><Button variant="text" color="error" size="small" startIcon={<CancelIcon />} onClick={handleCancelSubmission}>ยกเลิกการส่งงาน (แก้ไขใหม่)</Button></Stack>}
-                        {selectedJob.status === 'APPROVED' && <Chip label="งานเสร็จสมบูรณ์แล้ว" color="success" />}
                       </Box>
                   </Stack>
               )}
           </DialogContent>
           <DialogActions sx={{ p: 2 }}><Button variant="outlined" onClick={() => setOpenDetailDialog(false)} disabled={uploading} color="inherit">ปิดหน้าต่าง</Button></DialogActions>
       </Dialog>
+
       <Dialog open={openFeedback} fullWidth maxWidth="md"><DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white' }}>แบบสอบถาม</DialogTitle><DialogContent sx={{ pt: 3 }}><Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}><Step><StepLabel>บริการ</StepLabel></Step><Step><StepLabel>เจ้าหน้าที่</StepLabel></Step><Step><StepLabel>สรุป</StepLabel></Step></Stepper><Box sx={{ px: 2 }}>{renderStepContent(activeStep)}</Box></DialogContent><DialogActions sx={{ p: 3 }}><Button disabled={activeStep === 0} onClick={() => setActiveStep((prev) => prev - 1)}>ย้อนกลับ</Button>{activeStep === 2 ? <Button variant="contained" color="primary" onClick={handleSubmitFeedbackAndJob} disabled={uploading}>{uploading ? 'กำลังส่ง...' : 'ยืนยันและส่งงาน'}</Button> : <Button variant="contained" onClick={() => setActiveStep((prev) => prev + 1)}>ถัดไป</Button>}</DialogActions></Dialog>
     </Layout>
   );

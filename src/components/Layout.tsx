@@ -45,7 +45,7 @@ export default function Layout({ children, title }: LayoutProps) {
 
   if (profile) {
     if (profile.role === 'ADMIN') {
-        menuItems.push({ text: 'งานรอตรวจสอบ', icon: <FactCheckIcon />, path: '/my-jobs' });
+        //menuItems.push({ text: 'งานรอตรวจสอบ', icon: <FactCheckIcon />, path: '/my-jobs' });
         menuItems.push({ text: 'จัดการผู้ใช้ (Admin)', icon: <PeopleIcon />, path: '/admin/users' });
         menuItems.push({ text: 'อนุมัติผู้ใช้ใหม่', icon: <PersonAddIcon />, path: '/admin/approval' });
         menuItems.push({ text: 'สรุปความพึงพอใจ', icon: <AssessmentIcon />, path: '/admin/feedback' });

@@ -16,7 +16,12 @@ function AdminFeedbackPage() {
     const init = async () => {
         const { data } = await supabase.from('Departments').select('*');
         setDepartments(data || []);
-        const { data: fbData } = await supabase.from('JobFeedbacks').select('*, Jobs(title, department_ids, customer_name)').order('created_at', { ascending: false });
+        
+        // ดึง Feedback ทั้งหมด และ Join กับตาราง Jobs เพื่อเอาชื่อและฝ่าย
+        const { data: fbData } = await supabase
+            .from('JobFeedbacks')
+            .select('*, Jobs(title, department_ids, customer_name)')
+            .order('created_at', { ascending: false });
         setFeedbacks(fbData || []);
     };
     init();
@@ -24,6 +29,7 @@ function AdminFeedbackPage() {
 
   const filteredFeedbacks = feedbacks.filter(f => {
       if (filterDept === 0) return true;
+      // เช็คว่า department_ids ของงานนั้น มีฝ่ายที่เราเลือกอยู่ไหม
       return f.Jobs?.department_ids?.includes(filterDept);
   });
 
@@ -75,7 +81,9 @@ function AdminFeedbackPage() {
                               <Typography fontWeight={600}>{f.Jobs?.title}</Typography>
                               <Typography variant="caption" color="text.secondary">{f.Jobs?.customer_name}</Typography>
                           </TableCell>
+                          {/* คะแนนบริการ (เฉลี่ยย่อย) */}
                           <TableCell><Rating value={(f.contact_convenience + f.service_speed + f.repair_time + f.repair_quality)/4} readOnly size="small" precision={0.5} /></TableCell>
+                          {/* คะแนนจนท. (เฉลี่ยย่อย) */}
                           <TableCell><Rating value={(f.politeness + f.expertise)/2} readOnly size="small" precision={0.5} /></TableCell>
                           <TableCell>
                               <Chip icon={<Star sx={{ fontSize: 16 }} />} label={f.overall_satisfaction} color={f.overall_satisfaction >= 4 ? "success" : f.overall_satisfaction >= 3 ? "warning" : "error"} size="small" />
