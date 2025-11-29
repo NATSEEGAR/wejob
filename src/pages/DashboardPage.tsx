@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Typography, Button, Paper, Chip,
-  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, InputAdornment,
   ToggleButton, ToggleButtonGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  MenuItem, Select, InputLabel, FormControl, IconButton, Avatar, InputAdornment, OutlinedInput,
+  MenuItem, Select, InputLabel, FormControl, IconButton, Avatar,  OutlinedInput,
   AvatarGroup, Checkbox, ListItemText, FormControlLabel, Rating, Divider
 } from '@mui/material';
 
@@ -12,10 +12,10 @@ import { Box } from '@mui/material';
 
 import { 
   CalendarMonth as CalendarIcon, List as ListIcon, CheckCircle as CheckIcon, 
-  Cancel as CancelIcon, PlayArrow as PlayIcon, Done as DoneIcon,
-  Edit as EditIcon, Delete as DeleteIcon,
+  Cancel as CancelIcon, 
+  Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
   Add as AddIcon, LocationOn as LocationIcon, Image as ImageIcon,
-  Person as PersonIcon, Phone as PhoneIcon, Search as SearchIcon,
+  Person as PersonIcon, Phone as PhoneIcon, 
   Map as MapIcon, FilterAlt as FilterIcon, Assignment as AssignmentIcon
 } from '@mui/icons-material'; 
 import { supabase } from '../supabaseClient';
@@ -219,6 +219,59 @@ function DashboardPage() {
   // เช็คว่างานล็อกหรือยัง (Approved แล้ว ห้ามแก้)
   const isJobLocked = selectedJob?.status === 'APPROVED';
 
+  const renderJobImages = (imageUrlData: any) => {
+    if (!imageUrlData) return null;
+
+    let urls: string[] = [];
+
+    // แปลงข้อมูลให้เป็น Array (รองรับทั้งแบบเก่า String และแบบใหม่ Array)
+    if (Array.isArray(imageUrlData)) {
+      urls = imageUrlData;
+    } else if (typeof imageUrlData === 'string') {
+      const trimmed = imageUrlData.trim();
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          urls = Array.isArray(parsed) ? parsed : [trimmed];
+        } catch (e) {
+          urls = [trimmed];
+        }
+      } else {
+        urls = [trimmed];
+      }
+    }
+
+    if (urls.length === 0) return null;
+
+    return (
+      <Box mt={2}>
+        <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+          <ImageIcon color="action" />
+          <Typography variant="subtitle2">รูปภาพส่งงาน ({urls.length} รูป):</Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+          {urls.map((url, index) => (
+            <Box
+              key={index}
+              component="img"
+              src={url}
+              alt={`หลักฐาน ${index + 1}`}
+              sx={{
+                width: 120,
+                height: 120,
+                objectFit: 'cover',
+                borderRadius: 2,
+                border: '1px solid #ccc',
+                cursor: 'pointer'
+              }}
+              onClick={() => window.open(url, '_blank')}
+            />
+          ))}
+        </Stack>
+      </Box>
+    );
+  };
+
   return (
     <Layout title="หน้าหลัก">
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} mb={3} spacing={2}>
@@ -227,6 +280,22 @@ function DashboardPage() {
             <Typography variant="subtitle1" color="text.secondary">ภาพรวมการดำเนินงานทั้งหมด</Typography>
         </Box>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" width={{ xs: '100%', md: 'auto' }} flexWrap="wrap">
+            
+            {/* ช่องค้นหา */}
+                <TextField 
+                    placeholder="ค้นหางาน..." 
+                    size="small" 
+                    value={searchQuery} 
+                    onChange={(e) => setSearchQuery(e.target.value)} // นี่คือจุดที่เรียกใช้ setSearchQuery
+                    InputProps={{ 
+                        startAdornment: (
+                            <InputAdornment position="start">
+                                <SearchIcon color="action" />
+                            </InputAdornment>
+                        ) 
+                    }} 
+                    sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 200 }} 
+                />
             
             {/* --- [NEW] Filter Status Dropdown --- */}
             {profile?.role === 'ADMIN' && (
@@ -338,12 +407,66 @@ function DashboardPage() {
                         {departments.map((d) => (<MenuItem key={d.id} value={d.id}>{d.name}</MenuItem>))}
                     </Select>
                  </FormControl>
-                 <FormControl fullWidth disabled={newJob.selected_depts.length === 0}>
-                    <InputLabel id="create-assign-label">มอบหมายทีมงาน</InputLabel>
-                    <Select labelId="create-assign-label" multiple value={newJob.assigned_to} onChange={e => { const { target: { value } } = e; setNewJob({...newJob, assigned_to: typeof value === 'string' ? value.split(',') : value }); }} input={<OutlinedInput label="มอบหมายทีมงาน" />} renderValue={(selected) => (<Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>{selected.map((value) => { const user = deptUsers.find(u => u.user_id === value); return <Chip key={value} label={user ? user.nickname : value} size="small" />; })}</Box>)} MenuProps={MenuProps}>
-                        {deptUsers.map(u => (<MenuItem key={u.user_id} value={u.user_id}><Checkbox checked={newJob.assigned_to.indexOf(u.user_id) > -1} /><ListItemText primary={`${u.nickname} (${u.first_name})`} secondary={departments.find(d => d.id === u.department_id)?.name} /></MenuItem>))}
-                    </Select>
-                 </FormControl>
+
+                  <FormControl fullWidth disabled={newJob.selected_depts.length === 0}>
+                      <InputLabel id="create-assign-label">มอบหมายทีมงาน</InputLabel>
+                      <Select 
+                          labelId="create-assign-label" 
+                          multiple 
+                          value={newJob.assigned_to} 
+                          onChange={(e) => { 
+                              const { target: { value } } = e;
+                              const valArray = typeof value === 'string' ? value.split(',') : value;
+                              
+                              // เช็คว่ามีการกดปุ่ม "เลือกทุกคน" หรือไม่
+                              if (valArray.includes('ALL')) {
+                                  if (newJob.assigned_to.length === deptUsers.length && deptUsers.length > 0) {
+                                      // ถ้าเลือกครบอยู่แล้ว -> ให้ยกเลิกทั้งหมด
+                                      setNewJob({...newJob, assigned_to: [] });
+                                  } else {
+                                      // ถ้ายังเลือกไม่ครบ -> ให้เลือกทุกคน
+                                      setNewJob({...newJob, assigned_to: deptUsers.map(u => u.user_id) });
+                                  }
+                              } else {
+                                  // กรณีเลือกรายคนปกติ
+                                  setNewJob({...newJob, assigned_to: valArray }); 
+                              }
+                          }} 
+                          input={<OutlinedInput label="มอบหมายทีมงาน" />} 
+                          renderValue={(selected) => (
+                              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                  {/* ถ้าเลือกทุกคน ให้โชว์คำว่า "ทุกคนในฝ่าย" แทนชื่อยาวๆ */}
+                                  {selected.length === deptUsers.length && deptUsers.length > 0 ? (
+                                      <Chip label="ทุกคนในฝ่าย" color="primary" size="small" />
+                                  ) : (
+                                      selected.map((value) => { 
+                                          const user = deptUsers.find(u => u.user_id === value); 
+                                          return <Chip key={value} label={user ? user.nickname : value} size="small" />; 
+                                      })
+                                  )}
+                              </Box>
+                          )} 
+                          MenuProps={MenuProps}
+                      >
+                          {/* --- ปุ่มเลือกทุกคน --- */}
+                          <MenuItem value="ALL">
+                              <Checkbox 
+                                  checked={deptUsers.length > 0 && newJob.assigned_to.length === deptUsers.length} 
+                                  indeterminate={newJob.assigned_to.length > 0 && newJob.assigned_to.length < deptUsers.length}
+                              />
+                              <ListItemText primary="-- เลือกทุกคนในฝ่าย --" primaryTypographyProps={{ fontWeight: 'bold', color: 'primary.main' }} />
+                          </MenuItem>
+                          <Divider />
+                          {/* ------------------ */}
+
+                          {deptUsers.map(u => (
+                              <MenuItem key={u.user_id} value={u.user_id}>
+                                  <Checkbox checked={newJob.assigned_to.indexOf(u.user_id) > -1} />
+                                  <ListItemText primary={`${u.nickname} (${u.first_name})`} secondary={departments.find(d => d.id === u.department_id)?.name} />
+                              </MenuItem>
+                          ))}
+                      </Select>
+                  </FormControl>
                  <FormControlLabel control={<Checkbox checked={newJob.is_feedback_required} onChange={(e) => setNewJob({...newJob, is_feedback_required: e.target.checked})} color="primary" />} label="แนบแบบสอบถามความพึงพอใจ" sx={{ border: '1px solid #ddd', borderRadius: 1, px: 1, bgcolor: '#fafafa' }} />
                  <TextField label="รายละเอียด" multiline rows={2} fullWidth value={newJob.description} onChange={e => setNewJob({...newJob, description: e.target.value})} />
                  <Stack direction="row" spacing={2}>
@@ -384,26 +507,37 @@ function DashboardPage() {
                       {selectedJob.map_url && (<Button variant="outlined" color="primary" startIcon={<MapIcon />} href={selectedJob.map_url} target="_blank" rel="noopener noreferrer" fullWidth>เปิดดูแผนที่ Google Maps</Button>)}
                       
                       {/* --- [NEW] แสดง Feedback (เฉพาะ Admin เห็น) --- */}
+                      {/* --- [NEW] แสดง Feedback แบบละเอียด 6 ข้อ (เฉพาะ Admin เห็น) --- */}
                       {jobFeedback && profile?.role === 'ADMIN' && (
-                          <Box sx={{ p: 2, bgcolor: '#E8F5E9', borderRadius: 2, border: '1px solid #C8E6C9' }}>
-                              <Typography variant="h6" gutterBottom color="success.main">📝 ผลการประเมินจากลูกค้า</Typography>
-                              <Box display="flex" gap={2}>
-  <Box flex={1}>
-    <Typography variant="body2">บริการโดยรวม:</Typography>
-    <Rating value={jobFeedback.overall_satisfaction} readOnly size="small" />
-  </Box>
-  <Box flex={1}>
-    <Typography variant="body2">พนักงาน:</Typography>
-    <Rating value={jobFeedback.staff_satisfaction} readOnly size="small" />
-  </Box>
-</Box>
+                          <Box sx={{ p: 2, bgcolor: '#E8F5E9', borderRadius: 2, border: '1px solid #C8E6C9', mb: 2 }}>
+                              <Typography variant="h6" gutterBottom color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  📝 ผลการประเมินจากลูกค้า
+                              </Typography>
+                              
+                              <Divider sx={{ my: 1, borderColor: '#A5D6A7' }} />
+                              
+                              {/* Grid แสดงคะแนน 6 หัวข้อ */}
+                              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.5 }}>
+                                  <Box><Typography variant="caption" color="text.secondary">1. ความสุภาพ</Typography><br/><Rating value={jobFeedback.politeness} readOnly size="small" /></Box>
+                                  <Box><Typography variant="caption" color="text.secondary">2. ความรวดเร็ว</Typography><br/><Rating value={jobFeedback.service_speed} readOnly size="small" /></Box>
+                                  <Box><Typography variant="caption" color="text.secondary">3. ความเรียบร้อย</Typography><br/><Rating value={jobFeedback.repair_quality} readOnly size="small" /></Box>
+                                  <Box><Typography variant="caption" color="text.secondary">4. ความสะอาด</Typography><br/><Rating value={jobFeedback.testing_check} readOnly size="small" /></Box>
+                                  <Box><Typography variant="caption" color="text.secondary">5. ตรงต่อเวลา</Typography><br/><Rating value={jobFeedback.contact_convenience} readOnly size="small" /></Box>
+                                  <Box><Typography variant="caption" color="text.secondary" fontWeight="bold">6. ภาพรวม</Typography><br/><Rating value={jobFeedback.overall_satisfaction} readOnly size="small" /></Box>
+                              </Box>
 
-                              {jobFeedback.suggestion && <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>" {jobFeedback.suggestion} "</Typography>}
+                              {jobFeedback.suggestion && (
+                                  <Box sx={{ mt: 2, bgcolor: 'white', p: 1.5, borderRadius: 1, border: '1px dashed #A5D6A7' }}>
+                                      <Typography variant="caption" fontWeight="bold" color="success.main">ข้อเสนอแนะ:</Typography>
+                                      <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 0.5 }}>"{jobFeedback.suggestion}"</Typography>
+                                  </Box>
+                              )}
+
                               {jobFeedback.signature_url && (
                                   <Box mt={2} textAlign="center">
                                       <Typography variant="caption" color="text.secondary">ลายเซ็นลูกค้า:</Typography>
-                                      <Box sx={{ border: '1px solid #ddd', bgcolor: 'white', borderRadius: 1, p: 1, mt: 0.5 }}>
-                                          <img src={jobFeedback.signature_url} alt="ลายเซ็น" style={{ height: 60, objectFit: 'contain' }} />
+                                      <Box sx={{ border: '1px solid #ddd', bgcolor: 'white', borderRadius: 1, p: 1, mt: 0.5, display: 'inline-block' }}>
+                                          <img src={jobFeedback.signature_url} alt="ลายเซ็น" style={{ height: 50, objectFit: 'contain' }} />
                                       </Box>
                                   </Box>
                               )}
@@ -412,7 +546,8 @@ function DashboardPage() {
 
                       <Box sx={{ p: 2, bgcolor: '#FFF3E0', borderRadius: 2, border: '1px solid #FFE0B2' }}><Stack direction="row" spacing={1} alignItems="center" mb={1}><PersonIcon color="warning" /><Typography variant="subtitle2" fontWeight="bold">ข้อมูลลูกค้า</Typography></Stack><Typography variant="body1">คุณ {selectedJob.customer_name || '-'}</Typography><Stack direction="row" spacing={1} alignItems="center" mt={0.5}><PhoneIcon fontSize="small" color="action" /><Typography variant="body2" color="text.secondary">{selectedJob.customer_phone || '-'}</Typography></Stack></Box>
                       <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2 }}><Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "-"}</Typography></Box>
-                      {selectedJob.image_url && (<Box><Stack direction="row" alignItems="center" spacing={1} mb={1}><ImageIcon color="action" /><Typography variant="subtitle2">รูปภาพส่งงาน:</Typography></Stack><a href={selectedJob.image_url} target="_blank" rel="noreferrer"><img src={selectedJob.image_url} alt="หลักฐานงาน" style={{ width: '100%', borderRadius: '8px', border: '1px solid #ddd' }} /></a></Box>)}
+                    {/* เรียกใช้ฟังก์ชันแสดงรูปภาพ (รองรับหลายรูป) */}
+                    {selectedJob && renderJobImages(selectedJob.image_url)}
                       
                       {/* Status Label */}
                       <Box sx={{ textAlign: 'center', mt: 2 }}>
@@ -440,6 +575,7 @@ function DashboardPage() {
           </DialogActions>
       </Dialog>
     </Layout>
+    
   );
 }
 export default DashboardPage;
