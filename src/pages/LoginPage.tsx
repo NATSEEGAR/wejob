@@ -41,8 +41,14 @@ function LoginPage() {
     <Box sx={{ minHeight: '100vh', background: 'linear-gradient(180deg, #D32F2F 0%, #D32F2F 55%, #455A64 55%, #455A64 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', p: 2 }}>
       <Container maxWidth="xs">
         <Paper elevation={24} sx={{ p: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', borderRadius: 4, bgcolor: '#FFFFFF' }}>
-          <Box sx={{ width: 80, height: 80, bgcolor: '#D32F2F', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', mb: 2, color: 'white', fontSize: '32px', fontWeight: 'bold', border: '4px solid #FFCDD2' }}>WJ</Box>
-          <Typography variant="h4" sx={{ mb: 1, color: '#D32F2F' }}>WE JOB</Typography>
+          {/* 👇 ส่วนแสดงโลโก้บริษัท (ใส่แทนที่อันเดิม) 👇 */}
+          <Box sx={{ mb: 3, mt: 1, display: 'flex', justifyContent: 'center' }}>
+            <img 
+              src="/logo_numchai.png" 
+              alt="Numchai Service Center" 
+              style={{ maxWidth: '280px', height: 'auto' }} 
+            />
+          </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>เข้าสู่ระบบเพื่อเริ่มงาน</Typography>
           <Box component="form" onSubmit={handleLogin} noValidate sx={{ width: '100%' }}>
             <Stack spacing={3}>

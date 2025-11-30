@@ -9,11 +9,12 @@ import {
     PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
     Person as PersonIcon, Phone as PhoneIcon, Image as ImageIcon,
     Cancel as CancelIcon, Search as SearchIcon, Map as MapIcon, Assignment as AssignmentIcon,
-    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, CheckCircle as CheckCircleIcon 
+    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, QrCodeScanner as QrCodeScannerIcon, CheckCircle as CheckCircleIcon 
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
 import SignatureCanvas from 'react-signature-canvas';
+import QRCode from "react-qr-code";
 
 function MyJobsPage() {
     const [jobs, setJobs] = useState<any[]>([]);
@@ -31,6 +32,7 @@ function MyJobsPage() {
     // ----------------------------------------------------------------
 
     const [openFeedback, setOpenFeedback] = useState(false);
+    const [showQR, setShowQR] = useState(false);
     const [activeStep, setActiveStep] = useState(0);
     const sigPad = useRef<any>(null);
 
@@ -105,9 +107,22 @@ function MyJobsPage() {
 
     const handlePreSubmit = () => {
         // ตรวจสอบว่ามีรูปอย่างน้อย 1 รูป
-        if (selectedImages.length === 0) { showError("กรุณาแนบรูป", "ต้องถ่ายรูปหน้างานเพื่อยืนยันอย่างน้อย 1 รูป"); return; }
-        if (selectedJob.is_feedback_required) { setOpenDetailDialog(false); setOpenFeedback(true); setActiveStep(0); }
-        else { handleSubmitJob(); }
+        if (selectedImages.length === 0) { 
+            showError("กรุณาแนบรูป", "ต้องถ่ายรูปหน้างานเพื่อยืนยันอย่างน้อย 1 รูป"); 
+            return; 
+        }
+
+        if (selectedJob.is_feedback_required) { 
+            setOpenDetailDialog(false); // ปิดหน้าจอรายละเอียดงาน
+            
+            // ❌ ของเดิม: setOpenFeedback(true); 
+            // ✅ ของใหม่: สั่งเปิด QR Code แทน
+            setShowQR(true); 
+            
+        } else { 
+            // ถ้างานไหนไม่ต้องประเมิน ก็จบงานเลย
+            handleSubmitJob(); 
+        }
     };
 
     const handleCustomerSubmit = async () => {
@@ -341,35 +356,159 @@ function MyJobsPage() {
                 <TextField placeholder="ค้นหางาน..." size="small" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon color="action" /></InputAdornment>) }} sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 250 }} />
             </Stack>
             <Paper sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: 3 }}>
-                <TableContainer>
-                    <Table>
-                        <TableHead sx={{ bgcolor: '#424242' }}>
-                            <TableRow>
-                                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ชื่องาน</TableCell>
-                                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>ลูกค้า</TableCell>
-                                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>สถานะ</TableCell>
-                                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>เวลา</TableCell>
-                                <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>จัดการ</TableCell>
-                            </TableRow>
-                        </TableHead>
-                        <TableBody>
-                            {filteredJobs.map((job) => (
-                                <TableRow key={job.id} hover>
-                                    <TableCell>
-                                        <Typography fontWeight={600}>{job.title}</Typography>
-                                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary"><LocationOn fontSize="small" color="action" /><Typography variant="caption">{job.location || '-'}</Typography></Stack>
-                                        {job.is_feedback_required && <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />}
-                                    </TableCell>
-                                    <TableCell>{job.customer_name ? <Box><Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography><Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography></Box> : "-"}</TableCell>
-                                    <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} /></TableCell>
-                                    <TableCell><Stack direction="row" alignItems="center" spacing={0.5} color="text.secondary"><AccessTime fontSize="small" /><Typography variant="caption">{new Date(job.start_time).toLocaleDateString('th-TH')}</Typography></Stack></TableCell>
-                                    <TableCell align="center"><Button variant="outlined" size="small" startIcon={<Visibility />} onClick={() => openJobDetail(job)} color="primary">รายละเอียด</Button></TableCell>
-                                </TableRow>
-                            ))}
-                            {filteredJobs.length === 0 && <TableRow><TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>{searchQuery ? 'ไม่พบงานที่ค้นหา' : 'คุณยังไม่มีงานที่ได้รับมอบหมาย'}</TableCell></TableRow>}
-                        </TableBody>
-                    </Table>
-                </TableContainer>
+                {/* 👇👇👇 ก๊อปปี้ตารางทั้งก้อนนี้ ไปวางแทนอันเดิมครับ 👇👇👇 */}
+      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2 }}>
+        <Table>
+          <TableHead sx={{ bgcolor: '#424242' }}>
+            <TableRow>
+              <TableCell sx={{ color: 'white' }}>งาน</TableCell>
+              <TableCell sx={{ color: 'white' }}>ลูกค้า</TableCell>
+              <TableCell sx={{ color: 'white' }}>สถานะ</TableCell>
+              <TableCell sx={{ color: 'white' }}>วันที่</TableCell>
+              <TableCell align="center" sx={{ color: 'white' }}>จัดการ</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredJobs.map((job) => (
+              <TableRow key={job.id} hover>
+                <TableCell>
+                  <Typography fontWeight={600}>{job.title}</Typography>
+                  <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary">
+                    <LocationOn fontSize="small" color="action" />
+                    <Typography variant="caption">{job.location || '-'}</Typography>
+                  </Stack>
+                  {job.is_feedback_required && (
+                    <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />
+                  )}
+                </TableCell>
+                <TableCell>
+                  {job.customer_name ? (
+                    <Box>
+                      <Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography>
+                    </Box>
+                  ) : "-"}
+                </TableCell>
+                <TableCell>
+                  <Chip 
+                    label={getStatusLabel(job.status)} 
+                    size="small" 
+                    sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} 
+                  />
+                </TableCell>
+                <TableCell>
+                  <Stack direction="row" alignItems="center" spacing={0.5} color="text.secondary">
+                    <AccessTime fontSize="small" />
+                    <Typography variant="caption">{new Date(job.start_time).toLocaleDateString('th-TH')}</Typography>
+                  </Stack>
+                </TableCell>
+                
+                {/* 👇 ส่วนปุ่มกด (ที่มีปุ่ม QR Code) 👇 */}
+                <TableCell align="center">
+                  <Stack direction="row" spacing={1} justifyContent="center">
+                    <Button 
+                      variant="outlined" 
+                      size="small" 
+                      startIcon={<Visibility />} 
+                      onClick={() => openJobDetail(job)} 
+                      color="primary"
+                    >
+                      รายละเอียด
+                    </Button>
+
+                    {/* ปุ่ม QR Code (แสดงเฉพาะตอน IN_PROGRESS) */}
+                    {job.status === 'IN_PROGRESS' && (
+                      <Button 
+                        variant="contained" 
+                        color="info" 
+                        size="small" 
+                        startIcon={<QrCodeScannerIcon />} 
+                        onClick={() => { 
+                          setSelectedJob(job); 
+                          setShowQR(true); 
+                        }}
+                      >
+                        QR Code
+                      </Button>
+                    )}
+                  </Stack>
+                </TableCell>
+              </TableRow>
+            ))}
+
+            {/* กรณีไม่มีข้อมูล */}
+            {filteredJobs.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>
+                  {searchQuery ? 'ไม่พบงานที่ค้นหา' : 'คุณยังไม่มีงานที่ได้รับมอบหมาย'}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* 👇👇👇 วางโค้ดชุดนี้เพิ่มเข้าไปที่ด้านล่างสุด (ก่อนวงเล็บปิด return) 👇👇👇 */}
+
+      {/* Dialog แสดง QR Code สำหรับลูกค้า */}
+      <Dialog open={showQR} onClose={() => setShowQR(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ textAlign: 'center', bgcolor: '#1976D2', color: 'white' }}>
+              📱 สแกนเพื่อประเมินงาน
+          </DialogTitle>
+          <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              
+              <Typography variant="h6" gutterBottom fontWeight="bold" align="center">
+                  {selectedJob?.title}
+              </Typography>
+              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                  ให้ลูกค้าสแกน QR Code นี้เพื่อทำแบบสอบถาม
+              </Typography>
+              
+              {/* ส่วนสร้าง QR Code จาก Library */}
+              {selectedJob && (
+                  <Box sx={{ p: 3, border: '2px dashed #1976D2', borderRadius: 4, bgcolor: 'white', mb: 3 }}>
+                      <QRCode 
+                          // ลิงก์ไปยังหน้า PublicFeedbackPage
+                          value={`${window.location.origin}/feedback/${selectedJob.id}`} 
+                          size={200} 
+                          level="H"
+                      />
+                  </Box>
+              )}
+              
+              <Box sx={{ width: '100%', textAlign: 'center', bgcolor: '#E3F2FD', p: 2, borderRadius: 2 }}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                      ขั้นตอนการทำงาน:
+                  </Typography>
+                  <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                      1. ยื่นหน้านี้ให้ลูกค้าสแกน <br/>
+                      2. ลูกค้าทำรายการบนมือถือจนเสร็จ <br/>
+                      3. เมื่อลูกค้าทำเสร็จแล้ว ให้กดปุ่มสีเขียวด้านล่าง
+                  </Typography>
+
+                  <Stack direction="row" spacing={2} justifyContent="center" mt={2}>
+                      <Button variant="outlined" onClick={() => setShowQR(false)}>
+                          ยกเลิก
+                      </Button>
+                      
+                      {/* ปุ่มปิดงาน */}
+                      <Button 
+                          variant="contained" 
+                          color="success" 
+                          size="large"
+                          onClick={() => {
+                              setShowQR(false); 
+                              // สั่งปิดงานเมื่อลูกค้าทำเสร็จ
+                              handleSubmitJob(true); 
+                          }}
+                      >
+                          ลูกค้าทำเสร็จแล้ว (ปิดงาน)
+                      </Button>
+                  </Stack>
+              </Box>
+          </DialogContent>
+      </Dialog>
+
             </Paper>
             <Dialog open={openDetailDialog} onClose={() => !uploading && setOpenDetailDialog(false)} fullWidth maxWidth="sm">
                 <Box sx={{ bgcolor: selectedJob ? getStatusColor(selectedJob.status) : 'grey', height: 8, width: '100%' }} />
@@ -435,7 +574,7 @@ function MyJobsPage() {
                 <DialogActions sx={{ p: 2 }}><Button variant="outlined" onClick={() => setOpenDetailDialog(false)} disabled={uploading} color="inherit">ปิดหน้าต่าง</Button></DialogActions>
             </Dialog>
 
-            <Dialog open={openFeedback} fullWidth maxWidth="md">
+            <Dialog open={openFeedback} onClose={handleCloseFeedback} fullWidth maxWidth="md">
         
         {/* CASE 1: หน้าจอขอบคุณ (ลูกค้าเห็นหน้านี้) - เหมือนเดิม */}
         {submitSuccess ? (

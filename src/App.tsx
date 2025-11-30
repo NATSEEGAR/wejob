@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material'; 
 import theme from './theme';
 
+import PublicFeedbackPage from './pages/PublicFeedbackPage';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
 import DashboardPage from './pages/DashboardPage';
@@ -23,6 +24,8 @@ function App() {
         <Route path="/admin/approval" element={<AdminUserApprovalPage />} />
         <Route path="/admin/users" element={<AdminUserManagementPage />} />
         <Route path="/admin/feedback" element={<AdminFeedbackPage />} /> {/* <--- เพิ่ม */}
+        {/* เพิ่มบรรทัดนี้ครับ: เส้นทางสำหรับลูกค้า (ไม่ต้อง Login) */}
+        <Route path="/feedback/:jobId" element={<PublicFeedbackPage />} />
       </Routes>
     </ThemeProvider>
   );

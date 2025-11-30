@@ -6,7 +6,7 @@ import {
 import { 
   Dashboard as DashboardIcon, Work as WorkIcon, People as PeopleIcon, 
   PersonAdd as PersonAddIcon, Logout as LogoutIcon, Menu as MenuIcon,
-  FactCheck as FactCheckIcon, Assessment as AssessmentIcon
+  Assessment as AssessmentIcon
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
@@ -60,6 +60,14 @@ export default function Layout({ children, title }: LayoutProps) {
          <Box sx={{ width: 40, height: 40, bgcolor: 'white', color: '#D32F2F', borderRadius: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: '900', fontSize: '18px' }}>WJ</Box>
          <Typography variant="h6" fontWeight="bold" sx={{ letterSpacing: 1 }}>WeJob System</Typography>
       </Box>
+      {/* 👇👇👇 แก้ไขส่วนหัวเมนู ให้พื้นหลังเป็นสีขาว โลโก้จะได้ชัด 👇👇👇 */}
+      {/*<Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'white', borderBottom: '1px solid #ddd' }}>
+          <img 
+             src="/logo_numchai.png" 
+             alt="Numchai Service Center" 
+             style={{ maxWidth: '100%', height: 'auto', maxHeight: '50px' }} 
+          />
+      </Box>*/}
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
       {profile && (
           <Box sx={{ p: 3, textAlign: 'center' }}>
