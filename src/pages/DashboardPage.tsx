@@ -4,7 +4,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, InputAdornment,
   ToggleButton, ToggleButtonGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   MenuItem, Select, InputLabel, FormControl, IconButton, Avatar,  OutlinedInput,
-  AvatarGroup, Checkbox, ListItemText, FormControlLabel, Rating, Divider
+  Checkbox, ListItemText, FormControlLabel, Rating, Switch, Divider, TablePagination
 } from '@mui/material';
 
 import { Box } from '@mui/material';
@@ -16,7 +16,7 @@ import {
   Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
   Add as AddIcon, LocationOn as LocationIcon, Image as ImageIcon,
   Person as PersonIcon, Phone as PhoneIcon, 
-  Map as MapIcon, FilterAlt as FilterIcon, Assignment as AssignmentIcon
+  Map as MapIcon, FilterAlt as FilterIcon, Visibility as VisibilityIcon, Save as SaveIcon
 } from '@mui/icons-material'; 
 import { supabase } from '../supabaseClient';
 import FullCalendar from '@fullcalendar/react';
@@ -44,6 +44,17 @@ const getStatusLabel = (status: string) => {
       default: return status;
     }
 };
+const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleString('th-TH', {
+      day: 'numeric', 
+      month: 'short', 
+      year: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false
+    });
+  };
 
 const ITEM_HEIGHT = 48;
 const ITEM_PADDING_TOP = 8;
@@ -53,10 +64,44 @@ function DashboardPage() {
   const [profile, setProfile] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]); 
   const [departments, setDepartments] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [deptUsers, setDeptUsers] = useState<any[]>([]);
+  const [page, setPage] = useState(0); // หน้าปัจจุบัน (เริ่มที่ 0)
+  const [rowsPerPage, setRowsPerPage] = useState(10); // แสดงหน้าละกี่งาน (ตั้งไว้ 10)
   
   const [viewMode, setViewMode] = useState<'calendar' | 'table'>('table'); 
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 1. แปลงสถานะเป็นภาษาไทย
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'PENDING': return 'รอดำเนินการ';
+      case 'IN_PROGRESS': return 'กำลังดำเนินการ';
+      case 'WAITING_REVIEW': return 'รอตรวจงาน';
+      case 'APPROVED': return 'เสร็จสมบูรณ์';
+      case 'DONE': return 'เสร็จสมบูรณ์';
+      case 'CANCELLED': return 'ยกเลิก';
+      default: return status;
+    }
+  };
+
+  // 2. เลือกสีตามที่ขอ (แดง -> เหลือง -> เขียวอ่อน -> เขียวเข้ม)
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING': 
+          return '#D32F2F';        // 🔴 แดง (รอดำเนินการ)
+      case 'IN_PROGRESS': 
+          return '#FBC02D';        // 🟡 เหลืองเข้ม/ทอง (กำลังดำเนินการ) - ใช้โทนนี้เพื่อให้ตัวหนังสือสีขาวอ่านออกครับ
+      case 'WAITING_REVIEW': 
+          return '#66BB6A';        // 🟢 เขียวอ่อน (รอตรวจงาน)
+      case 'APPROVED': 
+          return '#1B5E20';        // 🌲 เขียวเข้ม (เสร็จสมบูรณ์)
+      case 'DONE': 
+          return '#1B5E20';        // 🌲 เขียวเข้ม
+      default: 
+          return '#757575';        // เทา (อื่นๆ)
+    }
+  };
   
   // --- ตัวกรอง ---
   const [adminFilterDept, setAdminFilterDept] = useState<number>(0);
@@ -71,8 +116,19 @@ function DashboardPage() {
   const [openDetailDialog, setOpenDetailDialog] = useState(false);
   const [selectedJob, setSelectedJob] = useState<any>(null);
 
-  const [openEditDialog, setOpenEditDialog] = useState(false);
+  
   const [editJob, setEditJob] = useState<any>(null);
+  const [editForm, setEditForm] = useState<any>({
+      title: '',
+      description: '',
+      customer_name: '',
+      customer_phone: '',
+      location: '',
+      start_time: '',
+      
+      department_ids: [],
+      is_feedback_required: true
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,6 +137,13 @@ function DashboardPage() {
       const { data: profileData } = await supabase.from('Profiles').select('*').eq('user_id', user.id).single();
       setProfile(profileData);
       const { data: depts } = await supabase.from('Departments').select('*').order('id');
+      // 2. 👇 เพิ่มอันนี้: ดึงรายชื่อพนักงาน (ไม่เอา Admin)
+      const { data: userList } = await supabase
+        .from('Profiles')
+        .select('*')
+        .neq('role', 'ADMIN')
+         .order('first_name');
+      setUsers(userList || []);
       setDepartments(depts || []);
       fetchJobs(profileData);
     };
@@ -169,28 +232,101 @@ function DashboardPage() {
     setNewJob({ title: '', location: '', map_url: '', description: '', start_time: '', end_time: '', assigned_to: [], customer_name: '', customer_phone: '', selected_depts: [], is_feedback_required: false });
   };
 
+  // แทนที่ handleUpdateJob เดิมด้วยอันนี้ครับ 
   const handleUpdateJob = async () => {
+      if (!editJob) return;
       if (!(await confirmAction('บันทึกการแก้ไข?', 'ข้อมูลเดิมจะถูกเปลี่ยนแปลง'))) return;
-      const { error } = await supabase.from('Jobs').update({
-            title: editJob.title, location: editJob.location, map_url: editJob.map_url, description: editJob.description,
-            start_time: new Date(editJob.start_time).toISOString(), end_time: new Date(editJob.end_time).toISOString(),
-            customer_name: editJob.customer_name, customer_phone: editJob.customer_phone
-        }).eq('id', editJob.id);
-      if (error) { showError("เกิดข้อผิดพลาด", error.message); return; }
-      await supabase.from('JobAssignments').delete().eq('job_id', editJob.id);
-      if (editJob.assigned_to && editJob.assigned_to.length > 0) {
-          const assignments = editJob.assigned_to.map((userId: string) => ({ job_id: editJob.id, user_id: userId }));
-          await supabase.from('JobAssignments').insert(assignments);
+
+      try {
+          // 1. อัปเดตข้อมูลงาน (Jobs)
+          const { error } = await supabase.from('Jobs').update({
+              title: editForm.title,
+              description: editForm.description,
+              customer_name: editForm.customer_name,
+              customer_phone: editForm.customer_phone,
+              location: editForm.location,
+              start_time: editForm.start_time,
+              department_ids: editForm.department_ids,
+              is_feedback_required: editForm.is_feedback_required
+          }).eq('id', editJob.id);
+
+          if (error) throw error;
+
+          // 2. อัปเดตพนักงานที่รับผิดชอบ (JobAssignments)
+          // ลบคนเก่าออกให้หมดก่อน
+          await supabase.from('JobAssignments').delete().eq('job_id', editJob.id);
+          
+          // ถ้ามีการเลือกคนใหม่ ให้ใส่เข้าไป
+          if (editForm.assigned_to && editForm.assigned_to.length > 0) {
+              const newAssignments = editForm.assigned_to.map((userId: string) => ({
+                  job_id: editJob.id,
+                  user_id: userId
+              }));
+              const { error: assignError } = await supabase.from('JobAssignments').insert(newAssignments);
+              if (assignError) throw assignError;
+          }
+
+          showSuccess("แก้ไขสำเร็จ");
+          setEditJob(null); // ปิดหน้าต่าง
+          fetchJobs(profile); // โหลดข้อมูลใหม่ (ส่ง profile เข้าไปตามเดิม)
+
+      } catch (err: any) {
+          showError("เกิดข้อผิดพลาด", err.message);
       }
-      showSuccess("แก้ไขสำเร็จ"); setOpenEditDialog(false); setOpenDetailDialog(false); fetchJobs(profile);
   };
 
+  // 👇👇👇 สร้างฟังก์ชันนี้เพิ่มเข้าไปครับ 👇👇👇
+  const handleOpenEdit = async (job: any) => {
+    setEditJob(job); // เก็บข้อมูลงานหลัก
+
+    // 👇 ฟังก์ชันเปลี่ยนหน้า
+  const handleChangePage = (event: unknown, newPage: number) => {
+    setPage(newPage);
+  };
+
+  // 👇 ฟังก์ชันเปลี่ยนจำนวนงานต่อหน้า (เช่น เปลี่ยนจาก 10 เป็น 25)
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+    // 1. ดึงข้อมูลว่างานนี้มอบหมายให้ใครบ้าง (จากตาราง JobAssignments)
+    const { data: assignments } = await supabase
+        .from('JobAssignments')
+        .select('user_id')
+        .eq('job_id', job.id);
+    
+    const currentAssignees = assignments?.map((a: any) => a.user_id) || [];
+
+    // 2. เอาข้อมูลมาใส่ฟอร์ม
+    setEditForm({
+      title: job.title || '',
+      description: job.description || '',
+      customer_name: job.customer_name || '',
+      customer_phone: job.customer_phone || '',
+      location: job.location || '',
+      // แปลงเวลาให้ถูกต้อง
+      start_time: job.start_time ? new Date(job.start_time).toISOString().slice(0, 16) : '',
+      department_ids: job.department_ids || [],
+      assigned_to: currentAssignees, // 👈 ใส่รายชื่อคนที่ทำอยู่นี้ลงไป
+      is_feedback_required: job.is_feedback_required ?? true
+    });
+  };
   const handleDeleteJob = async () => { 
       if(!selectedJob) return; 
       if(!(await confirmAction('ลบงานถาวร?', `ลบงาน "${selectedJob.title}"?`, 'ลบเลย', '#D32F2F'))) return; 
       if (selectedJob.image_url) { try { const fileName = selectedJob.image_url.split('/').pop(); if(fileName) await supabase.storage.from('job-evidence').remove([fileName]); } catch (e) {} }
       const { error } = await supabase.from('Jobs').delete().eq('id', selectedJob.id); 
       if (!error) { showSuccess("ลบงานเรียบร้อย"); setOpenDetailDialog(false); fetchJobs(profile); } else { showError("ลบไม่ได้", error.message); }
+  };
+
+  const handleChangePage = (event: unknown, newPage: number) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
   };
   
   // --- ฟังก์ชันอนุมัติ/ตีกลับ (สำหรับ Admin) ---
@@ -209,12 +345,6 @@ function DashboardPage() {
     fetchJobFeedback(job.id); 
     setOpenDetailDialog(true); 
   }
-  
-  const openEditForm = () => { 
-      const currentAssignees = selectedJob.JobAssignments?.map((a: any) => a.user_id) || [];
-      setEditJob({ ...selectedJob, assigned_to: currentAssignees, start_time: selectedJob.start_time.substring(0, 16), end_time: selectedJob.end_time.substring(0, 16) }); 
-      setOpenEditDialog(true); 
-  };
 
   // เช็คว่างานล็อกหรือยัง (Approved แล้ว ห้ามแก้)
   const isJobLocked = selectedJob?.status === 'APPROVED';
@@ -286,7 +416,7 @@ function DashboardPage() {
                     placeholder="ค้นหางาน..." 
                     size="small" 
                     value={searchQuery} 
-                    onChange={(e) => setSearchQuery(e.target.value)} // นี่คือจุดที่เรียกใช้ setSearchQuery
+                    onChange={(e: any) => setEditForm({ ...editForm, is_feedback_required: e.target.checked })}
                     InputProps={{ 
                         startAdornment: (
                             <InputAdornment position="start">
@@ -342,51 +472,134 @@ function DashboardPage() {
       </Stack>
 
       <Paper sx={{ p: 0, borderRadius: 3, overflow: 'hidden' }}>
+        {/* 👇👇👇 วางโค้ดชุดนี้แทนที่ส่วนแสดงผล Calendar/Table เดิมครับ 👇👇👇 */}
         {viewMode === 'calendar' ? (
-            <Box sx={{ p: 3 }}><FullCalendar plugins={[dayGridPlugin, interactionPlugin]} initialView="dayGridMonth" events={calendarEvents} eventClick={handleEventClick} height="auto" /></Box>
+            <Paper sx={{ p: 3, borderRadius: 3 }}>
+                <FullCalendar 
+                    plugins={[dayGridPlugin, interactionPlugin]} 
+                    initialView="dayGridMonth" 
+                    events={calendarEvents} 
+                    eventClick={handleEventClick} 
+                    height="auto" 
+                />
+            </Paper>
         ) : (
-            <TableContainer>
-                <Table>
-                    <TableHead sx={{ bgcolor: '#FAFAFA' }}>
-                        <TableRow>
-                            <TableCell sx={{ fontWeight: 'bold' }}>ชื่องาน</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>ลูกค้า</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>สถานที่</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>ทีมงาน</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>สถานะ</TableCell>
-                            <TableCell sx={{ fontWeight: 'bold' }}>เวลา</TableCell>
-                            <TableCell align="center" sx={{ fontWeight: 'bold' }}>จัดการ</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {filteredJobs.map((job) => (
-                            <TableRow key={job.id} hover>
-                                <TableCell>
-                                    <Typography fontWeight={600}>{job.title}</Typography>
-                                    <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary">
-                                        <LocationIcon fontSize="small" color="action" /><Typography variant="body2">{job.location || '-'}</Typography>
-                                    </Stack>
-                                    {job.is_feedback_required && (
-                                        <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />
-                                    )}
-                                </TableCell>
-                                <TableCell>{job.customer_name ? <Box><Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography><Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography></Box> : "-"}</TableCell>
-                                <TableCell>{job.location || '-'}</TableCell>
-                                <TableCell><AvatarGroup max={3} sx={{ justifyContent: 'flex-start' }}>{job.JobAssignments?.map((a: any) => (<Avatar key={a.user_id} sx={{ width: 24, height: 24, fontSize: 12 }} title={a.Profiles.nickname}>{a.Profiles.nickname[0]}</Avatar>))}</AvatarGroup></TableCell>
-                                <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} /></TableCell>
-                                <TableCell>
-                                     <Typography variant="body2">{new Date(job.start_time).toLocaleDateString('th-TH')}</Typography>
-                                     <Typography variant="caption" color="text.secondary">{new Date(job.start_time).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})} - {new Date(job.end_time).toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'})}</Typography>
-                                </TableCell>
-                                <TableCell align="center"><IconButton size="small" onClick={() => openJobDetail(job)} color="primary"><ListIcon /></IconButton></TableCell>
+            // ✅ ต้องมี <> ครอบตรงนี้ เพราะข้างในมี 2 ชิ้น (TableContainer + TablePagination)
+            <>
+                <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2, mb: 2 }}>
+                    <Table>
+                        <TableHead sx={{ bgcolor: '#424242' }}>
+                            <TableRow>
+                                <TableCell sx={{ color: 'white' }}>งาน / สถานที่</TableCell>
+                                <TableCell sx={{ color: 'white' }}>ลูกค้า</TableCell>
+                                <TableCell sx={{ color: 'white' }}>สถานะ</TableCell>
+                                <TableCell sx={{ color: 'white' }}>วันที่เริ่ม</TableCell>
+                                <TableCell align="center" sx={{ color: 'white' }}>จัดการ</TableCell>
                             </TableRow>
-                        ))}
-                        {filteredJobs.length === 0 && <TableRow><TableCell colSpan={7} align="center" sx={{ py: 5, color: 'text.secondary' }}>ไม่พบข้อมูล</TableCell></TableRow>}
-                    </TableBody>
-                </Table>
-            </TableContainer>
+                        </TableHead>
+                        <TableBody>
+                            {filteredJobs
+                                .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                                .map((job) => (
+                                    <TableRow key={job.id} hover>
+                                        <TableCell>
+                                            <Typography fontWeight="bold">{job.title}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{job.location || '-'}</Typography>
+                                            {job.is_feedback_required && <Chip label="รอประเมิน" size="small" color="warning" variant="outlined" sx={{ ml: 1, height: 20, fontSize: 10 }} />}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Typography variant="body2">{job.customer_name}</Typography>
+                                            <Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography>
+                                        </TableCell>
+                                        <TableCell>
+                                                <Chip 
+                                                    label={getStatusLabel(job.status)} // เรียกฟังก์ชันแปลงเป็นภาษาไทย
+                                                    size="small" 
+                                                    sx={{ 
+                                                    bgcolor: getStatusColor(job.status), // เรียกฟังก์ชันเปลี่ยนสี (แดง-เหลือง-เขียว)
+                                                    color: 'white',   // ตัวหนังสือสีขาว
+                                                    fontWeight: 'bold',
+                                                    minWidth: '100px', // กำหนดความกว้างให้เท่ากัน
+                                                    border: '1px solid rgba(255,255,255,0.2)' // เพิ่มขอบจางๆ ให้ดูมีมิติ
+                                                    }} 
+                                                />
+                                        </TableCell>
+                                        <TableCell>
+                      <Stack spacing={0.5}>
+                          {/* เวลาเริ่ม (สีเขียว) */}
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                              <Box sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                                  เริ่ม
+                              </Box>
+                              <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                                  {formatDate(job.start_time)}
+                              </Typography>
+                          </Stack>
+
+                          {/* เวลาสิ้นสุด (สีแดง) */}
+                          <Stack direction="row" alignItems="center" spacing={1}>
+                              <Box sx={{ bgcolor: '#FFEBEE', color: '#C62828', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                                  สิ้นสุด
+                              </Box>
+                              <Typography variant="body2" sx={{ fontSize: '0.85rem', color: job.end_time ? 'text.primary' : 'text.disabled' }}>
+                                  {job.end_time ? formatDate(job.end_time) : 'ไม่ระบุ'}
+                              </Typography>
+                          </Stack>
+                      </Stack>
+                  </TableCell>
+                                        <TableCell align="center">
+                                            <Stack direction="row" spacing={1} justifyContent="center">
+                                                <IconButton 
+                                                    color="primary" 
+                                                    size="small"
+                                                    onClick={() => handleOpenEdit(job)}
+                                                >
+                                                    <EditIcon />
+                                                </IconButton>
+                                                <IconButton 
+                                                    color="error" 
+                                                    size="small"
+                                                    onClick={() => {
+                                                        // เรียก Dialog ยืนยันลบ หรือดูรายละเอียด
+                                                        setSelectedJob(job);
+                                                        setOpenDetailDialog(true);
+                                                    }}
+                                                >
+                                                    <VisibilityIcon />
+                                                </IconButton>
+                                            </Stack>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            
+                            {filteredJobs.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                                        ไม่พบข้อมูลงาน
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+
+                {/* ส่วนแบ่งหน้า */}
+                <TablePagination
+                    rowsPerPageOptions={[5, 10, 25]}
+                    component="div"
+                    count={filteredJobs.length}
+                    rowsPerPage={rowsPerPage}
+                    page={page}
+                    onPageChange={handleChangePage}            
+                    onRowsPerPageChange={handleChangeRowsPerPage} 
+                    labelRowsPerPage="แสดงหน้าละ:"
+                />
+            </> 
+            // (ปิดถุงห่อ)
         )}
-      </Paper>
+        
+        {/* ปิด Paper (ห้ามมี )} เกินมาตรงนี้) */}
+        </Paper>
       
       {/* Dialog สร้างงาน (Admin Only) */}
       <Dialog open={openCreateDialog} onClose={() => setOpenCreateDialog(false)} fullWidth maxWidth="md">
@@ -478,20 +691,150 @@ function DashboardPage() {
          <DialogActions sx={{ p: 2 }}><Button onClick={() => setOpenCreateDialog(false)} color="inherit">ยกเลิก</Button><Button variant="contained" onClick={handleCreateJob}>บันทึก</Button></DialogActions>
       </Dialog>
 
-      {/* Dialog Edit Form */}
-      <Dialog open={openEditDialog} onClose={() => setOpenEditDialog(false)} fullWidth maxWidth="md">
-          <DialogTitle>แก้ไขงาน</DialogTitle>
-          <DialogContent>
-             {editJob && <Stack spacing={2} sx={{mt:1}}>
-                 <TextField label="ชื่องาน" fullWidth value={editJob.title} onChange={e => setEditJob({...editJob, title: e.target.value})} />
-                 {/* ใส่ input อื่นๆ ตามต้องการ */}
-                 <TextField label="รายละเอียด" multiline rows={2} fullWidth value={editJob.description} onChange={e => setEditJob({...editJob, description: e.target.value})} />
-             </Stack>}
-          </DialogContent>
-          <DialogActions>
-             <Button onClick={() => setOpenEditDialog(false)}>ยกเลิก</Button>
-             <Button variant="contained" onClick={handleUpdateJob}>บันทึก</Button>
-          </DialogActions>
+      {/* 👇👇👇 วางโค้ดนี้แทนก้อนเดิมเลยครับ 👇👇👇 */}
+      <Dialog open={!!editJob} onClose={() => setEditJob(null)} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ bgcolor: '#ED6C02', color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EditIcon /> แก้ไขรายละเอียดงาน
+        </DialogTitle>
+        <Dialog open={!!editJob} onClose={() => setEditJob(null)} fullWidth maxWidth="md"> {/* ขยายเป็น md ให้กว้างขึ้น */}
+        <DialogTitle sx={{ bgcolor: '#ED6C02', color: 'white', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <EditIcon /> แก้ไขรายละเอียดงาน
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            
+            {/* --- โซนที่ 1: ข้อมูลลูกค้า & สถานที่ --- */}
+            <Divider textAlign="left"><Chip label="1. ข้อมูลลูกค้า & สถานที่" size="small" /></Divider>
+                <Stack direction="row" spacing={2}>
+                    <TextField label="ชื่องาน / อาการเสีย" fullWidth size="small" value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} />
+                    <Stack direction="row" spacing={2}>
+                    <TextField
+                        label="เวลาเริ่ม"
+                        type="datetime-local"
+                        fullWidth
+                        size="small"
+                        value={editForm.start_time}
+                        onChange={(e) => setEditForm({ ...editForm, start_time: e.target.value })}
+                        InputLabelProps={{ shrink: true }}
+                    />
+                    <TextField
+                        label="เวลาจบ"
+                        type="datetime-local"
+                        fullWidth
+                        size="small"
+                        value={editForm.end_time} // อย่าลืมเช็คว่าประกาศตัวแปร end_time ใน editForm แล้วนะ
+                        onChange={(e) => setEditForm({ ...editForm, end_time: e.target.value })}
+                        InputLabelProps={{ shrink: true }}
+                    />
+                </Stack>
+            </Stack>
+            <Stack direction="row" spacing={2}>
+                 <TextField label="ชื่อลูกค้า" fullWidth size="small" value={editForm.customer_name} onChange={(e) => setEditForm({ ...editForm, customer_name: e.target.value })} />
+                 <TextField label="เบอร์โทรศัพท์" fullWidth size="small" value={editForm.customer_phone} onChange={(e) => setEditForm({ ...editForm, customer_phone: e.target.value })} />
+            </Stack>
+            <TextField label="สถานที่ / ที่อยู่ / ลิงก์ Map" fullWidth multiline rows={2} size="small" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} />
+
+            {/* --- โซนที่ 2: มอบหมายเจ้าหน้าที่ (อัปเกรดใหม่) --- */}
+            <Divider textAlign="left" sx={{ mt: 1 }}><Chip label="2. มอบหมายเจ้าหน้าที่" size="small" color="primary" /></Divider>
+            
+            <Stack spacing={2}>
+                {/* 2.1 เลือกแผนก */}
+                <FormControl fullWidth size="small">
+                    <InputLabel>แผนกที่รับผิดชอบ</InputLabel>
+                    <Select
+                        multiple
+                        value={editForm.department_ids || []}
+                        label="แผนกที่รับผิดชอบ"
+                        onChange={(e) => {
+                            const val = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value;
+                            // เมื่อเปลี่ยนแผนก ให้เคลียร์คนเก่าออกด้วย (เพื่อความชัวร์) หรือจะเก็บไว้ก็ได้
+                            setEditForm({ ...editForm, department_ids: val });
+                        }}
+                        renderValue={(selected: any) => <Box sx={{ display: 'flex', gap: 0.5 }}>{selected.map((val: any) => <Chip key={val} label={departments.find((d:any) => d.id === val)?.name} size="small" />)}</Box>}
+                    >
+                        {departments.map((dept:any) => <MenuItem key={dept.id} value={dept.id}>{dept.name}</MenuItem>)}
+                    </Select>
+                </FormControl>
+
+                {/* 2.2 เลือกพนักงาน (กรองตามแผนก + ปุ่มเลือกทั้งหมด) */}
+                <Box sx={{ border: '1px solid #ddd', p: 2, borderRadius: 2, bgcolor: '#FAFAFA' }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={1}>
+                        <Typography variant="body2" fontWeight="bold">เลือกพนักงานในแผนก</Typography>
+                        
+                        {/* ปุ่มเลือกทั้งหมด */}
+                        <Button 
+                            size="small" 
+                            variant="outlined" 
+                            onClick={() => {
+                                // กรองหาเฉพาะคนในแผนกที่เลือก
+                                const availableUsers = users.filter(u => editForm.department_ids.includes(u.department_id));
+                                // ดึง ID ทั้งหมดมาใส่
+                                const allIds = availableUsers.map(u => u.user_id);
+                                setEditForm({ ...editForm, assigned_to: allIds });
+                            }}
+                        >
+                            เลือกทุกคนในฝ่าย
+                        </Button>
+                    </Stack>
+
+                    <FormControl fullWidth size="small">
+                        <InputLabel>รายชื่อพนักงาน</InputLabel>
+                        <Select
+                            multiple
+                            value={editForm.assigned_to || []}
+                            label="รายชื่อพนักงาน"
+                            onChange={(e) => setEditForm({ ...editForm, assigned_to: typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value })}
+                            renderValue={(selected: any) => (
+                                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {selected.map((val: any) => {
+                                        const u = users.find((user:any) => user.user_id === val);
+                                        return <Chip key={val} label={u ? `${u.nickname} (${u.first_name})` : val} size="small" avatar={<Avatar src={u?.avatar_url} sx={{ width: 24, height: 24 }} />} />;
+                                    })}
+                                </Box>
+                            )}
+                        >
+                            {/* 👇 Logic กรอง: แสดงเฉพาะ User ที่อยู่ department_ids ที่เลือกไว้ 👇 */}
+                            {users
+                                .filter((u:any) => editForm.department_ids.includes(u.department_id)) // กรองตรงนี้
+                                .map((u:any) => (
+                                    <MenuItem key={u.user_id} value={u.user_id}>
+                                        <Stack direction="row" spacing={1} alignItems="center">
+                                            <Avatar src={u.avatar_url} sx={{ width: 24, height: 24 }} />
+                                            <Typography>{u.nickname} - {u.first_name} {u.last_name}</Typography>
+                                        </Stack>
+                                    </MenuItem>
+                            ))}
+                            
+                            {/* กรณีเลือกแผนกแล้วไม่มีพนักงาน */}
+                            {users.filter((u:any) => editForm.department_ids.includes(u.department_id)).length === 0 && (
+                                <MenuItem disabled>
+                                    <Typography variant="caption" color="text.secondary">-- ไม่พบพนักงานในแผนกที่เลือก --</Typography>
+                                </MenuItem>
+                            )}
+                        </Select>
+                    </FormControl>
+                </Box>
+            </Stack>
+
+            {/* --- โซนที่ 3: อื่นๆ --- */}
+            <Divider textAlign="left" sx={{ mt: 1 }}><Chip label="3. รายละเอียดอื่นๆ" size="small" /></Divider>
+            <TextField label="รายละเอียดเพิ่มเติม" fullWidth multiline rows={3} value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+            <FormControlLabel control={<Switch checked={editForm.is_feedback_required} onChange={(e) => setEditForm({ ...editForm, is_feedback_required: e.target.checked })} color="warning" />} label="งานนี้ต้องมีการประเมินผล (Feedback)" />
+
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setEditJob(null)} color="inherit">ยกเลิก</Button>
+          <Button onClick={handleUpdateJob} variant="contained" color="warning" startIcon={<SaveIcon />}>บันทึกการแก้ไข</Button>
+        </DialogActions>
+      </Dialog>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setEditJob(null)} color="inherit">ยกเลิก</Button>
+          {/* ปุ่มบันทึก */}
+          <Button onClick={handleUpdateJob} variant="contained" color="warning" startIcon={<SaveIcon />}>
+            บันทึกการแก้ไข
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Dialog รายละเอียด (ตรวจงาน) */}
@@ -569,7 +912,25 @@ function DashboardPage() {
           <DialogActions sx={{ px: 3, pb: 3, justifyContent: 'space-between' }}>
               {/* [Rule 1.1] Admin Only: Edit/Delete (และต้องยังไม่ Lock) */}
               {profile?.role === 'ADMIN' && !isJobLocked ? (
-                <Stack direction="row" spacing={1}><Button color="error" startIcon={<DeleteIcon />} onClick={handleDeleteJob}>ลบ</Button><Button color="inherit" startIcon={<EditIcon />} onClick={openEditForm}>แก้ไข</Button></Stack>
+                <Stack direction="row" spacing={1}>
+                    <Button color="error" startIcon={<DeleteIcon />} onClick={handleDeleteJob}>
+                        ลบ
+                    </Button>
+                    
+                    {/* 👇👇👇 แก้ตรงนี้ครับ 👇👇👇 */}
+                    <Button 
+                        color="inherit" 
+                        startIcon={<EditIcon />} 
+                        onClick={() => {
+                            setOpenDetailDialog(false); 
+                            handleOpenEdit(selectedJob); 
+                        }}
+                    >
+                        แก้ไข
+                    </Button>
+                    {/* 👆👆👆 จบส่วนแก้ 👆👆👆 */}
+                    
+                </Stack>
               ) : <Box />}
               <Button variant="outlined" onClick={() => setOpenDetailDialog(false)}>ปิด</Button>
           </DialogActions>

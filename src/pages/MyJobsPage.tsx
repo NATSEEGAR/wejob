@@ -9,7 +9,7 @@ import {
     PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
     Person as PersonIcon, Phone as PhoneIcon, Image as ImageIcon,
     Cancel as CancelIcon, Search as SearchIcon, Map as MapIcon, Assignment as AssignmentIcon,
-    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, QrCodeScanner as QrCodeScannerIcon, CheckCircle as CheckCircleIcon 
+    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, CheckCircle as CheckCircleIcon 
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
@@ -17,6 +17,47 @@ import SignatureCanvas from 'react-signature-canvas';
 import QRCode from "react-qr-code";
 
 function MyJobsPage() {
+    const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'PENDING': return 'รอดำเนินการ';
+      case 'IN_PROGRESS': return 'กำลังดำเนินการ';
+      case 'WAITING_REVIEW': return 'รอตรวจงาน';
+      case 'APPROVED': return 'เสร็จสมบูรณ์';
+      case 'DONE': return 'เสร็จสมบูรณ์';
+      case 'CANCELLED': return 'ยกเลิก';
+      default: return status;
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleString('th-TH', {
+      day: 'numeric', 
+      month: 'short', 
+      year: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
+  // 👇👇👇 2. ฟังก์ชันเลือกสี (แดง -> เหลือง -> เขียวอ่อน -> เขียวเข้ม) 👇👇👇
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'PENDING': 
+          return '#D32F2F';        // 🔴 แดง (รอดำเนินการ)
+      case 'IN_PROGRESS': 
+          return '#FBC02D';        // 🟡 เหลืองเข้ม (กำลังดำเนินการ)
+      case 'WAITING_REVIEW': 
+          return '#66BB6A';        // 🟢 เขียวอ่อน (รอตรวจงาน)
+      case 'APPROVED': 
+          return '#1B5E20';        // 🌲 เขียวเข้ม (เสร็จสมบูรณ์)
+      case 'DONE': 
+          return '#1B5E20';        // 🌲 เขียวเข้ม
+      default: 
+          return '#757575';        // เทา
+    }
+  };
     const [jobs, setJobs] = useState<any[]>([]);
     const [submitSuccess, setSubmitSuccess] = useState(false);   // สำหรับหน้าขอบคุณ (หน้าเขียว)
     const [customerFinished, setCustomerFinished] = useState(false); // สำหรับหน้าพนักงานกดส่ง (หน้าสรุป)
@@ -60,9 +101,6 @@ function MyJobsPage() {
         myJobList.sort((a: any, b: any) => b.id - a.id);
         setJobs(myJobList);
     };
-
-    const getStatusColor = (status: string) => { switch (status) { case 'PENDING': return '#D32F2F'; case 'IN_PROGRESS': return '#F57C00'; case 'WAITING_REVIEW': return '#1976D2'; case 'APPROVED': return '#388E3C'; default: return '#757575'; } };
-    const getStatusLabel = (status: string) => { switch (status) { case 'PENDING': return 'รอดำเนินการ'; case 'IN_PROGRESS': return 'กำลังดำเนินการ'; case 'WAITING_REVIEW': return 'รอตรวจงาน'; case 'APPROVED': return 'เสร็จสมบูรณ์'; default: return status; } };
 
     const filteredJobs = jobs.filter((job) => {
         const query = searchQuery.toLowerCase();
@@ -390,17 +428,40 @@ function MyJobsPage() {
                   ) : "-"}
                 </TableCell>
                 <TableCell>
-                  <Chip 
-                    label={getStatusLabel(job.status)} 
-                    size="small" 
-                    sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold' }} 
-                  />
-                </TableCell>
+                      <Chip 
+                        label={getStatusLabel(job.status)} 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: getStatusColor(job.status), 
+                          color: 'white',
+                          fontWeight: 'bold',
+                          minWidth: '100px', // จัดความกว้างให้เท่ากัน
+                          border: '1px solid rgba(255,255,255,0.2)' // เพิ่มขอบให้ดูมีมิติ
+                        }} 
+                      />
+                  </TableCell>
                 <TableCell>
-                  <Stack direction="row" alignItems="center" spacing={0.5} color="text.secondary">
-                    <AccessTime fontSize="small" />
-                    <Typography variant="caption">{new Date(job.start_time).toLocaleDateString('th-TH')}</Typography>
-                  </Stack>
+                    <Stack spacing={0.5}>
+                        {/* เวลาเริ่ม (สีเขียว) */}
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                                เริ่ม
+                            </Box>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+                                {formatDate(job.start_time)}
+                            </Typography>
+                        </Stack>
+
+                        {/* เวลาสิ้นสุด (สีแดง) */}
+                        <Stack direction="row" alignItems="center" spacing={1}>
+                            <Box sx={{ bgcolor: '#FFEBEE', color: '#C62828', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
+                                สิ้นสุด
+                            </Box>
+                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: job.end_time ? 'text.primary' : 'text.disabled' }}>
+                                {job.end_time ? formatDate(job.end_time) : 'ไม่ระบุ'}
+                            </Typography>
+                        </Stack>
+                    </Stack>
                 </TableCell>
                 
                 {/* 👇 ส่วนปุ่มกด (ที่มีปุ่ม QR Code) 👇 */}
@@ -415,22 +476,6 @@ function MyJobsPage() {
                     >
                       รายละเอียด
                     </Button>
-
-                    {/* ปุ่ม QR Code (แสดงเฉพาะตอน IN_PROGRESS) */}
-                    {job.status === 'IN_PROGRESS' && (
-                      <Button 
-                        variant="contained" 
-                        color="info" 
-                        size="small" 
-                        startIcon={<QrCodeScannerIcon />} 
-                        onClick={() => { 
-                          setSelectedJob(job); 
-                          setShowQR(true); 
-                        }}
-                      >
-                        QR Code
-                      </Button>
-                    )}
                   </Stack>
                 </TableCell>
               </TableRow>
