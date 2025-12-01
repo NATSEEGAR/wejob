@@ -56,26 +56,58 @@ export default function Layout({ children, title }: LayoutProps) {
 
   const drawer = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#212121', color: 'white' }}>
-      <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#D32F2F' }}>
+      {/*<Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 2, bgcolor: '#D32F2F' }}>
          <Box sx={{ width: 40, height: 40, bgcolor: 'white', color: '#D32F2F', borderRadius: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: '900', fontSize: '18px' }}>WJ</Box>
          <Typography variant="h6" fontWeight="bold" sx={{ letterSpacing: 1 }}>WeJob System</Typography>
-      </Box>
+      </Box>*/}
       {/* 👇👇👇 แก้ไขส่วนหัวเมนู ให้พื้นหลังเป็นสีขาว โลโก้จะได้ชัด 👇👇👇 */}
-      {/*<Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'white', borderBottom: '1px solid #ddd' }}>
+      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'white', borderBottom: '1px solid #ddd' }}>
           <img 
              src="/logo_numchai.png" 
              alt="Numchai Service Center" 
              style={{ maxWidth: '100%', height: 'auto', maxHeight: '50px' }} 
           />
-      </Box>*/}
+      </Box>
+      {/* เส้นแบ่งจางๆ ด้านบน */}
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
+      
       {profile && (
-          <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Avatar sx={{ width: 70, height: 70, margin: '0 auto', bgcolor: profile.role === 'ADMIN' ? '#FF5252' : '#607D8B', fontSize: 28 }}>{profile.nickname?.[0]}</Avatar>
-              <Typography variant="subtitle1" sx={{ mt: 1, fontWeight: 'bold' }}>{profile.first_name} {profile.last_name}</Typography>
-              <Typography variant="body2" sx={{ opacity: 0.7 }}>{profile.nickname} ({profile.role === 'ADMIN' ? 'แอดมิน' : 'พนักงาน'})</Typography>
+          <Box sx={{ 
+              p: 3, 
+              textAlign: 'center', 
+              // เพิ่มพื้นหลังไล่ระดับจางๆ ให้ดูมีมิติ
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%)' 
+          }}>
+              {/* Avatar ปรับให้มีขอบและเงา */}
+              <Avatar 
+                  sx={{ 
+                      width: 72, 
+                      height: 72, 
+                      margin: '0 auto', 
+                      // สีแดงเข้มขึ้นนิดนึงสำหรับ Admin / สีเทาอมฟ้าสำหรับพนักงาน
+                      bgcolor: profile.role === 'ADMIN' ? '#D32F2F' : '#546E7A', 
+                      fontSize: 30,
+                      fontWeight: 'bold',
+                      border: '3px solid rgba(255,255,255,0.2)', // เพิ่มขอบใสๆ
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)'   // เพิ่มเงา
+                  }}
+              >
+                  {profile.nickname?.[0]}
+              </Avatar>
+
+              {/* ชื่อจริง (สีขาวชัดเจน) */}
+              <Typography variant="subtitle1" sx={{ mt: 2, fontWeight: 600, color: '#fff', letterSpacing: 0.5 }}>
+                  {profile.first_name} {profile.last_name}
+              </Typography>
+              
+              {/* ชื่อเล่น + ตำแหน่ง (สีเทาจาง) */}
+              <Typography variant="body2" sx={{ color: '#B0BEC5', fontSize: '0.85rem' }}>
+                  คุณ{profile.nickname} • {profile.role === 'ADMIN' ? 'ผู้ดูแลระบบ' : 'ทีมช่าง'}
+              </Typography>
           </Box>
       )}
+      
+      {/* เส้นแบ่งจางๆ ด้านล่าง */}
       <Divider sx={{ bgcolor: 'rgba(255,255,255,0.1)' }} />
       <List sx={{ flexGrow: 1, px: 2 }}>
         {menuItems.map((item) => (
