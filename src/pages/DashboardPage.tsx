@@ -8,7 +8,7 @@ import {
 } from '@mui/material';
 
 import { Box } from '@mui/material';
-
+import dayjs from 'dayjs';
 
 import { 
   CalendarMonth as CalendarIcon, List as ListIcon, CheckCircle as CheckIcon, 
@@ -170,6 +170,7 @@ function DashboardPage() {
   };
 
   const fetchJobFeedback = async (jobId: number) => {
+      setJobFeedback(null); 
       const { data } = await supabase.from('JobFeedbacks').select('*').eq('job_id', jobId).single();
       setJobFeedback(data || null);
   };
@@ -217,7 +218,7 @@ function DashboardPage() {
 
     const { data: jobData, error } = await supabase.from('Jobs').insert([{
         title: newJob.title, location: newJob.location, map_url: newJob.map_url, description: newJob.description,
-        start_time: new Date(newJob.start_time).toISOString(), end_time: new Date(newJob.end_time).toISOString(),
+        start_time: dayjs(newJob.start_time).toISOString(), end_time: dayjs(newJob.end_time).toISOString(),
         status: 'PENDING', customer_name: newJob.customer_name, customer_phone: newJob.customer_phone,
         department_ids: newJob.selected_depts, is_feedback_required: newJob.is_feedback_required
     }]).select().single();
@@ -245,9 +246,11 @@ function DashboardPage() {
               customer_name: editForm.customer_name,
               customer_phone: editForm.customer_phone,
               location: editForm.location,
-              start_time: editForm.start_time,
               department_ids: editForm.department_ids,
-              is_feedback_required: editForm.is_feedback_required
+              is_feedback_required: editForm.is_feedback_required,
+              start_time: editForm.start_time ? dayjs(editForm.start_time).toISOString() : null,
+              end_time: editForm.end_time ? dayjs(editForm.end_time).toISOString() : null
+
           }).eq('id', editJob.id);
 
           if (error) throw error;
@@ -306,7 +309,7 @@ function DashboardPage() {
       customer_phone: job.customer_phone || '',
       location: job.location || '',
       // แปลงเวลาให้ถูกต้อง
-      start_time: job.start_time ? new Date(job.start_time).toISOString().slice(0, 16) : '',
+      start_time: job.start_time ? dayjs(job.start_time).format('YYYY-MM-DDTHH:mm') : '',
       department_ids: job.department_ids || [],
       assigned_to: currentAssignees, // 👈 ใส่รายชื่อคนที่ทำอยู่นี้ลงไป
       is_feedback_required: job.is_feedback_required ?? true
@@ -416,7 +419,8 @@ function DashboardPage() {
                     placeholder="ค้นหางาน..." 
                     size="small" 
                     value={searchQuery} 
-                    onChange={(e: any) => setEditForm({ ...editForm, is_feedback_required: e.target.checked })}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    
                     InputProps={{ 
                         startAdornment: (
                             <InputAdornment position="start">
@@ -549,13 +553,17 @@ function DashboardPage() {
                   </TableCell>
                                         <TableCell align="center">
                                             <Stack direction="row" spacing={1} justifyContent="center">
+                                                {profile?.role === 'ADMIN' && (
                                                 <IconButton 
                                                     color="primary" 
                                                     size="small"
                                                     onClick={() => handleOpenEdit(job)}
+                                                    // ล็อคปุ่มถ้างานอยู่ในสถานะที่ห้ามแก้
+                                                    disabled={['APPROVED', 'DONE', 'CANCELLED'].includes(job.status)}
                                                 >
                                                     <EditIcon />
                                                 </IconButton>
+                                            )}
                                                 <IconButton 
                                                     color="error" 
                                                     size="small"
@@ -849,7 +857,7 @@ function DashboardPage() {
                   <Stack spacing={3} sx={{ mt: 1 }}>
                       {selectedJob.map_url && (<Button variant="outlined" color="primary" startIcon={<MapIcon />} href={selectedJob.map_url} target="_blank" rel="noopener noreferrer" fullWidth>เปิดดูแผนที่ Google Maps</Button>)}
                       
-                      {/* --- [NEW] แสดง Feedback (เฉพาะ Admin เห็น) --- */}
+                      
                       {/* --- [NEW] แสดง Feedback แบบละเอียด 6 ข้อ (เฉพาะ Admin เห็น) --- */}
                       {jobFeedback && profile?.role === 'ADMIN' && (
                           <Box sx={{ p: 2, bgcolor: '#E8F5E9', borderRadius: 2, border: '1px solid #C8E6C9', mb: 2 }}>
@@ -884,6 +892,32 @@ function DashboardPage() {
                                       </Box>
                                   </Box>
                               )}
+                          </Box>
+                      )}
+
+                      {selectedJob?.customer_signature && (
+                            <Box sx={{ mt: 2, textAlign: 'center', border: '1px dashed #ccc', p: 2, borderRadius: 2 }}>
+                                <Typography variant="subtitle2" color="text.secondary">ลายเซ็นลูกค้า</Typography>
+                                <img src={selectedJob.customer_signature} alt="Signature" style={{ maxHeight: 100, maxWidth: '100%' }} />
+                            </Box>
+                     )}
+
+                      {selectedJob.customer_signature && profile?.role === 'ADMIN' && (
+                          <Box sx={{ mt: 2, p: 2, border: '1px dashed #BDBDBD', borderRadius: 2, bgcolor: '#FAFAFA', textAlign: 'center' }}>
+                              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                  ลายเซ็นลูกค้า (ผู้รับงาน)
+                              </Typography>
+                              <Box 
+                                  component="img" 
+                                  src={selectedJob.customer_signature} 
+                                  alt="ลายเซ็นลูกค้า" 
+                                  sx={{ 
+                                      maxHeight: 120, 
+                                      maxWidth: '100%', 
+                                      objectFit: 'contain',
+                                      filter: 'contrast(1.2)'
+                                  }} 
+                              />
                           </Box>
                       )}
 
