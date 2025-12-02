@@ -44,7 +44,7 @@ const LandingPage = () => {
             }}
           />
 
-          <Typography variant="h6" sx={{ color: '#64748B', fontWeight: 600 }}>
+          <Typography variant="h6" sx={{ color: '#000000ff', fontWeight: 600 }}>
             กรุณาเลือกระบบที่ต้องการเข้าใช้งาน
           </Typography>
         </Box>
