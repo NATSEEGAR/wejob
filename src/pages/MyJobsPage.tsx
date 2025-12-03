@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
     Typography, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Stack,
     Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress, TextField, InputAdornment, Rating, IconButton, Stepper, Step, StepLabel,
-    MenuItem, Select, FormControl, InputLabel // Import เพิ่ม
+    MenuItem, Select, FormControl, TablePagination, InputLabel // Import เพิ่ม
 } from '@mui/material';
 import { supabase } from '../supabaseClient';
 import {
@@ -60,6 +60,17 @@ const getStatusColor = (status: string) => {
 
 function MyJobsPage() {
     const [jobs, setJobs] = useState<any[]>([]);
+    const [page, setPage] = useState(0); 
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+
+    const handleChangePage = (event: unknown, newPage: number) => {
+        setPage(newPage);
+    };
+
+    const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setRowsPerPage(parseInt(event.target.value, 10));
+        setPage(0);
+    };
     const [submitSuccess, setSubmitSuccess] = useState(false);
     const [openDetailDialog, setOpenDetailDialog] = useState(false);
     const [selectedJob, setSelectedJob] = useState<any>(null);
@@ -273,7 +284,9 @@ function MyJobsPage() {
                             </TableRow>
                         </TableHead>
                         <TableBody>
-                            {filteredJobs.map((job) => {
+                            {filteredJobs
+                            .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                            .map((job) => {
                                 const dateShow = dayjs(job.start_time).format('DD/MM/YYYY');
                                 const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
                                 return (
@@ -304,6 +317,16 @@ function MyJobsPage() {
                         </TableBody>
                     </Table>
                 </TableContainer>
+                <TablePagination
+                    rowsPerPageOptions={[5, 10, 25]}
+                    component="div"
+                    count={filteredJobs.length}
+                    rowsPerPage={rowsPerPage}
+                    page={page}
+                    onPageChange={handleChangePage}
+                    onRowsPerPageChange={handleChangeRowsPerPage}
+                    labelRowsPerPage="แสดงหน้าละ:"
+                />
             </Paper>
 
             <Dialog open={showQR} onClose={() => setShowQR(false)} maxWidth="sm" fullWidth>

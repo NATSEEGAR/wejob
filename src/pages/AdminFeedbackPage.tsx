@@ -3,7 +3,7 @@ import {
   Box, Typography, Container, Grid, Paper, Chip, 
   Rating, LinearProgress, Stack, Avatar, Card, CardContent, 
   Divider, Button, FormControl, InputLabel, Select, MenuItem,
-  ToggleButton, ToggleButtonGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow
+  ToggleButton, ToggleButtonGroup, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow
 } from '@mui/material';
 import { 
   Star, SentimentVeryDissatisfied, SentimentSatisfiedAlt, SentimentVerySatisfied, 
@@ -19,6 +19,17 @@ export default function AdminFeedbackPage() {
   
   // State สำหรับตัวกรองและมุมมอง
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  const [page, setPage] = useState(0); 
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const handleChangePage = (event: unknown, newPage: number) => {
+      setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+      setRowsPerPage(parseInt(event.target.value, 10));
+      setPage(0);
+  };
   const [filterRate, setFilterRate] = useState<number | 'ALL'>('ALL');
   const [filterDept, setFilterDept] = useState<number>(0); 
   
@@ -289,7 +300,9 @@ export default function AdminFeedbackPage() {
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {filteredReviews.map((item) => (
+                        {filteredReviews
+                        .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                        .map((item) => (
                             <TableRow key={item.id} hover>
                                 <TableCell>{formatDate(item.updated_at)}</TableCell>
                                 <TableCell>
@@ -319,8 +332,20 @@ export default function AdminFeedbackPage() {
                     </TableBody>
                 </Table>
             </TableContainer>
-        )}
-        
+            
+         )}
+        <TablePagination
+                    component="div"
+                    count={filteredReviews.length}
+                    page={page}
+                    onPageChange={handleChangePage}
+                    rowsPerPage={rowsPerPage}
+                    onRowsPerPageChange={handleChangeRowsPerPage}
+                    rowsPerPageOptions={[5, 10, 25]}
+                    labelRowsPerPage="แสดงหน้าละ:"
+                    sx={{ bgcolor: 'white', borderRadius: 2, boxShadow: 1 }}
+                />
+            
         {/* แสดงเมื่อไม่มีข้อมูลในโหมด Chart (ในโหมด Table มี Row ว่างให้แล้ว) */}
         {filteredReviews.length === 0 && viewMode === 'chart' && (
             <Box sx={{ textAlign: 'center', py: 10, color: '#94A3B8' }}>

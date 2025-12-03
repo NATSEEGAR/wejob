@@ -422,7 +422,7 @@ function DashboardPage() {
                                     <TableCell>
                                         <Typography fontWeight="bold">{job.title}</Typography>
                                         <Typography variant="caption" color="text.secondary">{job.location || '-'}</Typography>
-                                        {job.is_feedback_required && <Chip label="รอประเมิน" size="small" color="warning" variant="outlined" sx={{ ml: 1, height: 20, fontSize: 10 }} />}
+                                        {job.is_feedback_required && <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" sx={{ ml: 1, height: 20, fontSize: 10 }} />}
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2">{job.customer_name}</Typography>
@@ -615,10 +615,22 @@ function DashboardPage() {
                                 </Box>
                             )}
 
-                            {selectedJob.customer_signature && (
+                            {jobFeedback?.signature_url && (
                                 <Box sx={{ mt: 2, p: 2, border: '1px dashed #BDBDBD', borderRadius: 2, bgcolor: '#FAFAFA', textAlign: 'center' }}>
-                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>✍️ ลายเซ็นลูกค้า (ผู้รับงาน)</Typography>
-                                    <Box component="img" src={selectedJob.customer_signature} alt="ลายเซ็นลูกค้า" sx={{ maxHeight: 120, maxWidth: '100%', objectFit: 'contain', filter: 'contrast(1.2)' }} />
+                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                                        ✍️ ลายเซ็นลูกค้า (ผู้รับงาน)
+                                    </Typography>
+                                    <Box 
+                                        component="img" 
+                                        src={jobFeedback.signature_url}  // 👈 เรียกจาก jobFeedback
+                                        alt="ลายเซ็นลูกค้า" 
+                                        sx={{ 
+                                            maxHeight: 120, 
+                                            maxWidth: '100%', 
+                                            objectFit: 'contain',
+                                            filter: 'contrast(1.2)' 
+                                        }} 
+                                    />
                                 </Box>
                             )}
                         </Grid>
