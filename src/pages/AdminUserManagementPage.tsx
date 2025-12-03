@@ -44,8 +44,15 @@ function AdminUserManagementPage() {
 
   const fetchData = async () => {
     // 1. ดึงข้อมูลแผนก (เหมือนเดิม)
-    const { data: depts } = await supabase.from('Departments').select('*');
-    setDepartments(depts || []);
+    const { data: depts } = await supabase.from('Departments').select('*').order('id');
+    
+    // 🤖 Pilot Test: กรองเอาเฉพาะ "ฝ่ายหุ่นยนต์" เท่านั้น
+    if (depts) {
+        const onlyRobot = depts.filter(d => d.name.includes('หุ่นยนต์'));
+        setDepartments(onlyRobot);
+    } else {
+        setDepartments([]);
+    }
 
     // 2. ดึงข้อมูล User (Profiles) แบบมีเงื่อนไขใหม่ ✅
     const { data: userList, error } = await supabase

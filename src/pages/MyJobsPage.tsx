@@ -1,76 +1,75 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
     Typography, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Stack,
-    Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress, TextField, InputAdornment, Rating, Stepper, Step, StepLabel, IconButton
+    Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress, TextField, InputAdornment, Rating, IconButton, Stepper, Step, StepLabel,
+    MenuItem, Select, FormControl, InputLabel // Import เพิ่ม
 } from '@mui/material';
 import { supabase } from '../supabaseClient';
 import {
-    LocationOn, AccessTime, Visibility,
+    LocationOn, Visibility,
     PlayArrow as PlayIcon, Done as DoneIcon, CloudUpload as CloudUploadIcon,
     Person as PersonIcon, Phone as PhoneIcon, Image as ImageIcon,
-    Cancel as CancelIcon, Search as SearchIcon, Map as MapIcon, Assignment as AssignmentIcon,
-    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, CheckCircle as CheckCircleIcon 
+    Search as SearchIcon, Map as MapIcon, Assignment as AssignmentIcon,
+    Close as CloseIcon, AddPhotoAlternate as AddPhotoIcon, CalendarMonth as CalendarIcon,
+    CheckCircle as CheckCircleIcon 
 } from '@mui/icons-material';
 import Layout from '../components/Layout';
 import { confirmAction, showSuccess, showError } from '../utils/alertUtils';
 import SignatureCanvas from 'react-signature-canvas';
 import QRCode from "react-qr-code";
+import dayjs from 'dayjs';
+
+const TIME_SLOTS = [
+    { value: 'MORNING', label: 'ช่วงเช้า', start: 9, end: 12 },
+    { value: 'AFTERNOON', label: 'ช่วงบ่าย', start: 13, end: 16 },
+    { value: 'EVENING', label: 'ช่วงเย็น', start: 17, end: 20 },
+    { value: 'ALL_DAY', label: 'ทั้งวัน', start: 9, end: 17 },
+];
+
+const getSlotFromTime = (startStr: string) => {
+    if (!startStr) return 'ALL_DAY';
+    const hour = dayjs(startStr).hour();
+    if (hour < 12) return 'MORNING';
+    if (hour >= 13 && hour < 17) return 'AFTERNOON';
+    if (hour >= 17) return 'EVENING';
+    return 'ALL_DAY';
+};
+
+const getStatusLabel = (status: string) => {
+    switch (status) {
+        case 'PENDING': return 'รอดำเนินการ';
+        case 'IN_PROGRESS': return 'กำลังดำเนินการ';
+        case 'WAITING_REVIEW': return 'รอตรวจงาน';
+        case 'APPROVED': return 'เสร็จสมบูรณ์';
+        case 'DONE': return 'เสร็จสมบูรณ์';
+        case 'CANCELLED': return 'ยกเลิก';
+        default: return status;
+    }
+};
+
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'PENDING': return '#D32F2F';
+        case 'IN_PROGRESS': return '#FBC02D';
+        case 'WAITING_REVIEW': return '#66BB6A';
+        case 'APPROVED': return '#1B5E20';
+        case 'DONE': return '#1B5E20';
+        default: return '#757575';
+    }
+};
 
 function MyJobsPage() {
-    const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'PENDING': return 'รอดำเนินการ';
-      case 'IN_PROGRESS': return 'กำลังดำเนินการ';
-      case 'WAITING_REVIEW': return 'รอตรวจงาน';
-      case 'APPROVED': return 'เสร็จสมบูรณ์';
-      case 'DONE': return 'เสร็จสมบูรณ์';
-      case 'CANCELLED': return 'ยกเลิก';
-      default: return status;
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleString('th-TH', {
-      day: 'numeric', 
-      month: 'short', 
-      year: '2-digit', 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false
-    });
-  };
-
-  // 👇👇👇 2. ฟังก์ชันเลือกสี (แดง -> เหลือง -> เขียวอ่อน -> เขียวเข้ม) 👇👇👇
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'PENDING': 
-          return '#D32F2F';        // 🔴 แดง (รอดำเนินการ)
-      case 'IN_PROGRESS': 
-          return '#FBC02D';        // 🟡 เหลืองเข้ม (กำลังดำเนินการ)
-      case 'WAITING_REVIEW': 
-          return '#66BB6A';        // 🟢 เขียวอ่อน (รอตรวจงาน)
-      case 'APPROVED': 
-          return '#1B5E20';        // 🌲 เขียวเข้ม (เสร็จสมบูรณ์)
-      case 'DONE': 
-          return '#1B5E20';        // 🌲 เขียวเข้ม
-      default: 
-          return '#757575';        // เทา
-    }
-  };
     const [jobs, setJobs] = useState<any[]>([]);
-    const [submitSuccess, setSubmitSuccess] = useState(false);   // สำหรับหน้าขอบคุณ (หน้าเขียว)
-    const [customerFinished, setCustomerFinished] = useState(false); // สำหรับหน้าพนักงานกดส่ง (หน้าสรุป)
+    const [submitSuccess, setSubmitSuccess] = useState(false);
     const [openDetailDialog, setOpenDetailDialog] = useState(false);
     const [selectedJob, setSelectedJob] = useState<any>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('ALL'); // ✅ [NEW] State ตัวกรองสถานะ
     const [uploading, setUploading] = useState(false);
     const [signatureData, setSignatureData] = useState<string | null>(null);
 
-    // --- แก้ไข Point 1: เปลี่ยน State ให้เก็บเป็น Array เพื่อรองรับหลายรูป ---
     const [selectedImages, setSelectedImages] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-    // ----------------------------------------------------------------
 
     const [openFeedback, setOpenFeedback] = useState(false);
     const [showQR, setShowQR] = useState(false);
@@ -78,18 +77,10 @@ function MyJobsPage() {
     const sigPad = useRef<any>(null);
 
     const [feedback, setFeedback] = useState({
-      politeness: 5,          // 1. ความสุภาพ
-      service_speed: 5,       // 2. ความรวดเร็ว
-      repair_quality: 5,      // 3. ความเรียบร้อย
-      testing_check: 5,       // 4. ความสะอาด (ใช้ช่อง testing_check แทน)
-      contact_convenience: 5, // 5. ความตรงต่อเวลา (ใช้ช่อง contact_convenience แทน)
-      overall_satisfaction: 5,// 6. ความพึงพอใจโดยรวม
-      
-      // ค่าอื่นๆ ใส่ไว้กัน Error แต่ไม่ได้โชว์
-      repair_time: 5, expertise: 5, understanding: 5, advice: 5, notification: 5, staff_satisfaction: 5,
-      
-      suggestion: ''          // ข้อเสนอแนะ
-  });
+        politeness: 5, service_speed: 5, repair_quality: 5, testing_check: 5, contact_convenience: 5, overall_satisfaction: 5,
+        repair_time: 5, expertise: 5, understanding: 5, advice: 5, notification: 5, staff_satisfaction: 5,
+        suggestion: ''
+    });
 
     useEffect(() => { fetchMyJobs(); }, []);
 
@@ -104,38 +95,37 @@ function MyJobsPage() {
 
     const filteredJobs = jobs.filter((job) => {
         const query = searchQuery.toLowerCase();
-        return ((job.title?.toLowerCase().includes(query)) || (job.location?.toLowerCase().includes(query)) || (job.customer_name?.toLowerCase().includes(query)));
+        const matchesSearch = ((job.title?.toLowerCase().includes(query)) || (job.location?.toLowerCase().includes(query)) || (job.customer_name?.toLowerCase().includes(query)));
+        
+        // ✅ [NEW] กรองตามสถานะ
+        const matchesStatus = statusFilter === 'ALL' || job.status === statusFilter;
+        
+        return matchesSearch && matchesStatus;
     });
 
     const openJobDetail = (job: any) => {
-        setSelectedJob({ ...job, start_formatted: new Date(job.start_time).toLocaleString('th-TH'), end_formatted: new Date(job.end_time).toLocaleString('th-TH') });
-        // reset state รูปภาพเมื่อเปิด dialog ใหม่
+        const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+        const dateFormatted = dayjs(job.start_time).format('DD/MM/YYYY');
+        setSelectedJob({ ...job, display_date: dateFormatted, display_slot: slotLabel });
         setSelectedImages([]); setPreviewUrls([]);
         setOpenDetailDialog(true);
     };
 
-    // --- แก้ไข Point 3: ฟังก์ชันเลือกรูปภาพ รองรับการเลือกเพิ่ม ---
     const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
             const newFiles = Array.from(event.target.files);
-            // เพิ่มไฟล์ใหม่เข้าไปใน state เดิม
             setSelectedImages((prevFiles) => [...prevFiles, ...newFiles]);
-
-            // สร้าง URL สำหรับ preview รูปใหม่
             const newFileUrls = newFiles.map((file) => URL.createObjectURL(file));
             setPreviewUrls((prevUrls) => [...prevUrls, ...newFileUrls]);
         }
-        // Reset input value เพื่อให้สามารถเลือกไฟล์เดิมซ้ำได้ถ้าจำเป็น
         event.target.value = '';
     };
 
-    // --- เพิ่มฟังก์ชัน: ลบรูปภาพที่เลือก ---
     const handleRemoveImage = (indexToRemove: number) => {
-        URL.revokeObjectURL(previewUrls[indexToRemove]); // เคลียร์ memory
+        URL.revokeObjectURL(previewUrls[indexToRemove]);
         setSelectedImages((prevFiles) => prevFiles.filter((_, index) => index !== indexToRemove));
         setPreviewUrls((prevUrls) => prevUrls.filter((_, index) => index !== indexToRemove));
     };
-    // -----------------------------------------------------
 
     const handleStartJob = async () => {
         if (!(await confirmAction('เริ่มงาน?', 'ยืนยันที่จะเริ่มปฏิบัติงาน'))) return;
@@ -144,50 +134,31 @@ function MyJobsPage() {
     };
 
     const handlePreSubmit = () => {
-        // ตรวจสอบว่ามีรูปอย่างน้อย 1 รูป
         if (selectedImages.length === 0) { 
             showError("กรุณาแนบรูป", "ต้องถ่ายรูปหน้างานเพื่อยืนยันอย่างน้อย 1 รูป"); 
             return; 
         }
-
         if (selectedJob.is_feedback_required) { 
-            setOpenDetailDialog(false); // ปิดหน้าจอรายละเอียดงาน
-            
-            // ❌ ของเดิม: setOpenFeedback(true); 
-            // ✅ ของใหม่: สั่งเปิด QR Code แทน
+            setOpenDetailDialog(false); 
             setShowQR(true); 
-            
         } else { 
-            // ถ้างานไหนไม่ต้องประเมิน ก็จบงานเลย
             handleSubmitJob(); 
         }
     };
 
     const handleCustomerSubmit = async () => {
-      // เช็คว่าเซ็นชื่อหรือยัง
       if (sigPad.current && sigPad.current.isEmpty()) { 
           showError("กรุณาเซ็นชื่อ", "ลูกค้าต้องเซ็นชื่อรับรอง"); 
           return; 
       }
-      
       if (!(await confirmAction('ยืนยันการประเมิน', 'ข้อมูลจะถูกบันทึกและไม่สามารถแก้ไขได้'))) return;
 
-      // ✅ [เพิ่มใหม่] เซฟรูปลายเซ็นเก็บใส่ตัวแปรไว้ก่อนที่กระดานจะหายไป
       const canvas = sigPad.current.getCanvas();
       const dataUrl = canvas.toDataURL('image/png');
       setSignatureData(dataUrl);
-
-      // แสดงหน้าขอบคุณ
       setSubmitSuccess(true);
     };
 
-  // 2. ฟังก์ชันสำหรับพนักงาน: รับเครื่องคืน -> กดปุ่มไปหน้าเตรียมส่ง
-  const handleStaffCloseThankYou = () => {
-      setSubmitSuccess(false);   // ปิดหน้าขอบคุณ
-      setCustomerFinished(true); // เปิดหน้า "พร้อมส่งงาน" (Staff View)
-  };
-
-  // 3. ฟังก์ชันส่งงานจริง: พนักงานกดยืนยันครั้งสุดท้าย -> อัปโหลดขึ้น Server
     const handleFinalUpload = async () => {
       if (!signatureData) { showError("ผิดพลาด", "ไม่พบข้อมูลลายเซ็น"); return; }
 
@@ -204,22 +175,10 @@ function MyJobsPage() {
           await supabase.from('JobFeedbacks').insert([{ job_id: selectedJob.id, ...feedback, signature_url: sigUrl }]);
           await handleSubmitJob(true); 
 
-          // --- ช่วงการเคลียร์ค่า (Reset) ---
-          setOpenFeedback(false);
-          setCustomerFinished(false);
-          setActiveStep(0);
-          
-          // ✅ [เพิ่มบรรทัดนี้ครับ] ล้างลายเซ็นทิ้ง เพื่อเตรียมพร้อมสำหรับงานถัดไป
-          setSignatureData(null); 
-          
-      } catch (err: any) { 
-          showError("เกิดข้อผิดพลาด", err.message); 
-      } finally {
-          setUploading(false); 
-      }
+          setOpenFeedback(false); setSubmitSuccess(false); setActiveStep(0); setSignatureData(null);
+      } catch (err: any) { showError("เกิดข้อผิดพลาด", err.message); } finally { setUploading(false); }
     };
 
-    // --- แก้ไข Point 5: ฟังก์ชันส่งงาน วนลูปอัปโหลดหลายไฟล์ ---
     const handleSubmitJob = async (skipConfirm = false) => {
         if (!skipConfirm && !(await confirmAction('ยืนยันการส่งงาน?', 'ตรวจสอบความเรียบร้อยแล้วใช่หรือไม่'))) return;
         
@@ -230,331 +189,153 @@ function MyJobsPage() {
         setUploading(true);
         try {
             const uploadedUrls: string[] = [];
-
-            // ใช้ Promise.all เพื่ออัปโหลดทุกไฟล์แบบขนาน (Parallel upload)
             await Promise.all(selectedImages.map(async (file, index) => {
                 const fileExt = file.name.split('.').pop();
-                // ตั้งชื่อไฟล์ให้ไม่ซ้ำกันโดยใส่ timestamp และ index
                 const fileName = `${selectedJob.id}_${Date.now()}_${index}.${fileExt}`;
-                
                 const { error: uploadError } = await supabase.storage.from('job-evidence').upload(fileName, file);
                 if (uploadError) throw uploadError;
-
                 const { data: { publicUrl } } = supabase.storage.from('job-evidence').getPublicUrl(fileName);
                 uploadedUrls.push(publicUrl);
             }));
 
-            // *** สำคัญ: Database Column 'image_url' ต้องเป็นชนิด jsonb หรือ text[] เพื่อรองรับการเก็บ array ***
-            const { error: dbError } = await supabase.from('Jobs').update({ 
-                status: 'WAITING_REVIEW', 
-                image_url: uploadedUrls  // ส่งไปเป็น Array ของ URLs
-            }).eq('id', selectedJob.id);
-
+            const { error: dbError } = await supabase.from('Jobs').update({ status: 'WAITING_REVIEW', image_url: uploadedUrls }).eq('id', selectedJob.id);
             if (dbError) throw dbError;
             showSuccess("ส่งงานเรียบร้อย!", "ขอบคุณครับ"); setOpenDetailDialog(false); fetchMyJobs();
-        } catch (error: any) { 
-            console.error(error);
-            showError("เกิดข้อผิดพลาดในการอัปโหลด", error.message); 
-        } finally { 
-            setUploading(false); 
-        }
+        } catch (error: any) { showError("เกิดข้อผิดพลาดในการอัปโหลด", error.message); } finally { setUploading(false); }
     };
-    // -----------------------------------------------------------
 
     const handleCancelSubmission = async () => {
         if (!(await confirmAction('ยกเลิกการส่งงาน?', 'สถานะจะกลับไปเป็น "กำลังดำเนินการ" เพื่อให้คุณแก้ไขรูปภาพหรือข้อมูลได้', 'ใช่, ยกเลิกการส่ง'))) return;
-        // เคลียร์ image_url เมื่อยกเลิก
         const { error } = await supabase.from('Jobs').update({ status: 'IN_PROGRESS', image_url: null }).eq('id', selectedJob.id);
         if (!error) { showSuccess("ยกเลิกการส่งงานแล้ว"); setOpenDetailDialog(false); fetchMyJobs(); }
     };
 
-    const renderStepContent = (step: number) => {
-      // Component ย่อยสำหรับแถวดาว
-      const RatingRow = ({ label, val, setter }: any) => (
-          <Box display="flex" justifyContent="space-between" alignItems="center" my={1.5}>
-              <Typography variant="body1" fontWeight={500}>{label}</Typography>
-              <Rating 
-                  value={val} 
-                  onChange={(e, v) => setFeedback({ ...feedback, [setter]: v })} 
-                  size="large" 
-              />
-          </Box>
-      );
-
-      switch (step) {
-          case 0: // ขั้นตอนที่ 1: ให้คะแนน (6 หัวข้อตามที่ขอ)
-              return (
-                  <Box>
-                      <Typography variant="h6" gutterBottom color="primary" sx={{mb: 2}}>
-                          ส่วนที่ 1: ความพึงพอใจต่อการบริการ
-                      </Typography>
-                      
-                      <RatingRow label="1. ความสุภาพของพนักงาน" val={feedback.politeness} setter="politeness" />
-                      <RatingRow label="2. ความรวดเร็วในการให้บริการ" val={feedback.service_speed} setter="service_speed" />
-                      <RatingRow label="3. ความเรียบร้อยของงาน" val={feedback.repair_quality} setter="repair_quality" />
-                      <RatingRow label="4. ความสะอาดหลังจบงาน" val={feedback.testing_check} setter="testing_check" />
-                      <RatingRow label="5. ความตรงต่อเวลา" val={feedback.contact_convenience} setter="contact_convenience" />
-                      
-                      <Divider sx={{ my: 2 }} />
-                      <RatingRow label="6. ความพึงพอใจโดยรวม" val={feedback.overall_satisfaction} setter="overall_satisfaction" />
-                  </Box>
-              );
-
-          case 1: // ขั้นตอนที่ 2: ข้อเสนอแนะ & เซ็นชื่อ
-              return (
-                  <Box>
-                      <Typography variant="h6" gutterBottom color="primary">
-                          ส่วนที่ 2: ข้อเสนอแนะและยืนยัน
-                      </Typography>
-
-                      <Typography variant="subtitle2" gutterBottom>ข้อเสนอแนะเพิ่มเติม:</Typography>
-                      <TextField 
-                          placeholder="พิมพ์ข้อเสนอแนะที่นี่ (ถ้ามี)..." 
-                          multiline 
-                          rows={3} 
-                          fullWidth 
-                          value={feedback.suggestion} 
-                          onChange={e => setFeedback({ ...feedback, suggestion: e.target.value })} 
-                          sx={{ mb: 3 }} 
-                      />
-
-                      <Typography variant="subtitle2" gutterBottom>ลายเซ็นลูกค้า:</Typography>
-                      <Box sx={{ border: '1px solid #ccc', bgcolor: '#fff', borderRadius: 1, overflow: 'hidden' }}>
-                          <SignatureCanvas 
-                              ref={sigPad} 
-                              penColor="black" 
-                              canvasProps={{ width: 500, height: 200, className: 'sigCanvas' }} 
-                              backgroundColor="#fafafa"
-                          />
-                      </Box>
-                      <Button size="small" onClick={() => sigPad.current?.clear()} sx={{ mt: 1 }}>
-                          ล้างลายเซ็น
-                      </Button>
-                  </Box>
-              );
-          default: return "";
-      }
-  }
-
-    // ฟังก์ชันช่วยแสดงรูปภาพที่ส่งงานไปแล้ว (รองรับทั้งแบบรูปเดียว String และหลายรูป Array)
-    const renderSubmittedImages = (imageUrlData: any) => {
-        if (!imageUrlData) return null;
-
-        let urls: string[] = [];
-        if (Array.isArray(imageUrlData)) {
-            urls = imageUrlData; // ถ้าเป็น Array อยู่แล้ว
-        } else if (typeof imageUrlData === 'string') {
-             // ถ้าเป็น string (ข้อมูลเก่า) ให้ลอง parse JSON หรือใส่เป็น array เดี่ยว
-             try {
-                 const parsed = JSON.parse(imageUrlData);
-                 urls = Array.isArray(parsed) ? parsed : [imageUrlData];
-             } catch (e) {
-                 urls = [imageUrlData];
-             }
-        }
-
-        if (urls.length === 0) return null;
-
-        return (
-            <Box mt={2}>
-                <Stack direction="row" alignItems="center" spacing={1} mb={1}>
-                    <ImageIcon color="action" /><Typography variant="subtitle2">รูปภาพส่งงาน ({urls.length} รูป):</Typography>
-                </Stack>
-                <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>
-                    {urls.map((url, index) => (
-                        <img key={index} src={url} alt={`หลักฐาน ${index + 1}`} style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }} />
-                    ))}
-                </Stack>
-            </Box>
-        );
-    };
-
-    // [เพิ่มฟังก์ชันใหม่] สำหรับรีเซ็ตค่าเมื่อปิดหน้าต่างขอบคุณ
     const handleCloseFeedback = () => {
         setOpenFeedback(false);
-        // รอให้ Dialog ปิดสนิทก่อน ค่อยรีเซ็ตค่า (เพื่อความเนียน)
         setTimeout(() => {
-            setSubmitSuccess(false);
-            setActiveStep(0);
-            // รีเซ็ตค่าคะแนนกลับเป็นค่าเริ่มต้น
-            setFeedback({
-                contact_convenience: 5, service_speed: 5, repair_time: 5, repair_quality: 5, testing_check: 5, 
-                politeness: 5, expertise: 5, understanding: 5, advice: 5, notification: 5, 
-                overall_satisfaction: 5, staff_satisfaction: 5, suggestion: '' 
-            });
-            // ล้างลายเซ็น (ถ้ามี)
+            setSubmitSuccess(false); setActiveStep(0);
+            setFeedback({ politeness: 5, service_speed: 5, repair_quality: 5, testing_check: 5, contact_convenience: 5, overall_satisfaction: 5, repair_time: 5, expertise: 5, understanding: 5, advice: 5, notification: 5, staff_satisfaction: 5, suggestion: '' });
             if (sigPad.current) sigPad.current.clear();
         }, 300);
     };
 
+    const renderStepContent = (step: number) => {
+        const RatingRow = ({ label, val, setter }: any) => (
+            <Box display="flex" justifyContent="space-between" alignItems="center" my={1.5}>
+                <Typography variant="body1" fontWeight={500}>{label}</Typography>
+                <Rating value={val} onChange={(e, v) => setFeedback({ ...feedback, [setter]: v })} size="large" />
+            </Box>
+        );
+        switch (step) {
+            case 0: return (<Box><Typography variant="h6" gutterBottom color="primary" sx={{mb: 2}}>ส่วนที่ 1: ความพึงพอใจต่อการบริการ</Typography><RatingRow label="1. ความสุภาพของพนักงาน" val={feedback.politeness} setter="politeness" /><RatingRow label="2. ความรวดเร็วในการให้บริการ" val={feedback.service_speed} setter="service_speed" /><RatingRow label="3. ความเรียบร้อยของงาน" val={feedback.repair_quality} setter="repair_quality" /><RatingRow label="4. ความสะอาดหลังจบงาน" val={feedback.testing_check} setter="testing_check" /><RatingRow label="5. ความตรงต่อเวลา" val={feedback.contact_convenience} setter="contact_convenience" /><Divider sx={{ my: 2 }} /><RatingRow label="6. ความพึงพอใจโดยรวม" val={feedback.overall_satisfaction} setter="overall_satisfaction" /></Box>);
+            case 1: return (<Box><Typography variant="h6" gutterBottom color="primary">ส่วนที่ 2: ข้อเสนอแนะและยืนยัน</Typography><Typography variant="subtitle2" gutterBottom>ข้อเสนอแนะเพิ่มเติม:</Typography><TextField placeholder="พิมพ์ข้อเสนอแนะที่นี่ (ถ้ามี)..." multiline rows={3} fullWidth value={feedback.suggestion} onChange={e => setFeedback({ ...feedback, suggestion: e.target.value })} sx={{ mb: 3 }} /><Typography variant="subtitle2" gutterBottom>ลายเซ็นลูกค้า:</Typography><Box sx={{ border: '1px solid #ccc', bgcolor: '#fff', borderRadius: 1, overflow: 'hidden' }}><SignatureCanvas ref={sigPad} penColor="black" canvasProps={{ width: 500, height: 200, className: 'sigCanvas' }} backgroundColor="#fafafa" /></Box><Button size="small" onClick={() => sigPad.current?.clear()} sx={{ mt: 1 }}>ล้างลายเซ็น</Button></Box>);
+            default: return "";
+        }
+    }
+
+    const renderSubmittedImages = (imageUrlData: any) => {
+        if (!imageUrlData) return null;
+        let urls: string[] = [];
+        if (Array.isArray(imageUrlData)) { urls = imageUrlData; } 
+        else if (typeof imageUrlData === 'string') { try { const parsed = JSON.parse(imageUrlData); urls = Array.isArray(parsed) ? parsed : [imageUrlData]; } catch (e) { urls = [imageUrlData]; } }
+        if (urls.length === 0) return null;
+        return (<Box mt={2}><Stack direction="row" alignItems="center" spacing={1} mb={1}><ImageIcon color="action" /><Typography variant="subtitle2">รูปภาพส่งงาน ({urls.length} รูป):</Typography></Stack><Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: 1 }}>{urls.map((url, index) => (<img key={index} src={url} alt={`หลักฐาน ${index + 1}`} style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }} />))}</Stack></Box>);
+    };
+
     return (
         <Layout title="งานของฉัน">
-            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', sm: 'center' }} mb={3} spacing={2}>
+            <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'start', md: 'center' }} mb={3} spacing={2}>
                 <Typography variant="h4">งานที่ได้รับมอบหมาย</Typography>
-                <TextField placeholder="ค้นหางาน..." size="small" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon color="action" /></InputAdornment>) }} sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 250 }} />
+                <Stack direction="row" spacing={2}>
+                    {/* ✅ [NEW] ตัวกรองสถานะ */}
+                    <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'white', borderRadius: 1 }}>
+                        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} displayEmpty>
+                            <MenuItem value="ALL">ทุกสถานะ</MenuItem>
+                            <MenuItem value="PENDING">รอดำเนินการ</MenuItem>
+                            <MenuItem value="IN_PROGRESS">กำลังดำเนินการ</MenuItem>
+                            <MenuItem value="WAITING_REVIEW">รอตรวจงาน</MenuItem>
+                            <MenuItem value="APPROVED">เสร็จสมบูรณ์</MenuItem>
+                        </Select>
+                    </FormControl>
+                    <TextField placeholder="ค้นหางาน..." size="small" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} InputProps={{ startAdornment: (<InputAdornment position="start"><SearchIcon color="action" /></InputAdornment>) }} sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 200 }} />
+                </Stack>
             </Stack>
+            
             <Paper sx={{ borderRadius: 3, overflow: 'hidden', boxShadow: 3 }}>
-                {/* 👇👇👇 ก๊อปปี้ตารางทั้งก้อนนี้ ไปวางแทนอันเดิมครับ 👇👇👇 */}
-      <TableContainer component={Paper} sx={{ borderRadius: 2, boxShadow: 2 }}>
-        <Table>
-          <TableHead sx={{ bgcolor: '#424242' }}>
-            <TableRow>
-              <TableCell sx={{ color: 'white' }}>งาน</TableCell>
-              <TableCell sx={{ color: 'white' }}>ลูกค้า</TableCell>
-              <TableCell sx={{ color: 'white' }}>สถานะ</TableCell>
-              <TableCell sx={{ color: 'white' }}>วันที่</TableCell>
-              <TableCell align="center" sx={{ color: 'white' }}>จัดการ</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredJobs.map((job) => (
-              <TableRow key={job.id} hover>
-                <TableCell>
-                  <Typography fontWeight={600}>{job.title}</Typography>
-                  <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary">
-                    <LocationOn fontSize="small" color="action" />
-                    <Typography variant="caption">{job.location || '-'}</Typography>
-                  </Stack>
-                  {job.is_feedback_required && (
-                    <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />
-                  )}
-                </TableCell>
-                <TableCell>
-                  {job.customer_name ? (
-                    <Box>
-                      <Typography variant="body2" fontWeight="bold">{job.customer_name}</Typography>
-                      <Typography variant="caption" color="text.secondary">{job.customer_phone}</Typography>
-                    </Box>
-                  ) : "-"}
-                </TableCell>
-                <TableCell>
-                      <Chip 
-                        label={getStatusLabel(job.status)} 
-                        size="small" 
-                        sx={{ 
-                          bgcolor: getStatusColor(job.status), 
-                          color: 'white',
-                          fontWeight: 'bold',
-                          minWidth: '100px', // จัดความกว้างให้เท่ากัน
-                          border: '1px solid rgba(255,255,255,0.2)' // เพิ่มขอบให้ดูมีมิติ
-                        }} 
-                      />
-                  </TableCell>
-                <TableCell>
-                    <Stack spacing={0.5}>
-                        {/* เวลาเริ่ม (สีเขียว) */}
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                            <Box sx={{ bgcolor: '#E8F5E9', color: '#2E7D32', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
-                                เริ่ม
-                            </Box>
-                            <Typography variant="body2" sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
-                                {formatDate(job.start_time)}
-                            </Typography>
-                        </Stack>
-
-                        {/* เวลาสิ้นสุด (สีแดง) */}
-                        <Stack direction="row" alignItems="center" spacing={1}>
-                            <Box sx={{ bgcolor: '#FFEBEE', color: '#C62828', px: 0.5, borderRadius: 1, fontSize: '10px', fontWeight: 'bold', minWidth: '35px', textAlign: 'center' }}>
-                                สิ้นสุด
-                            </Box>
-                            <Typography variant="body2" sx={{ fontSize: '0.85rem', color: job.end_time ? 'text.primary' : 'text.disabled' }}>
-                                {job.end_time ? formatDate(job.end_time) : 'ไม่ระบุ'}
-                            </Typography>
-                        </Stack>
-                    </Stack>
-                </TableCell>
-                
-                {/* 👇 ส่วนปุ่มกด (ที่มีปุ่ม QR Code) 👇 */}
-                <TableCell align="center">
-                  <Stack direction="row" spacing={1} justifyContent="center">
-                    <Button 
-                      variant="outlined" 
-                      size="small" 
-                      startIcon={<Visibility />} 
-                      onClick={() => openJobDetail(job)} 
-                      color="primary"
-                    >
-                      รายละเอียด
-                    </Button>
-                  </Stack>
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {/* กรณีไม่มีข้อมูล */}
-            {filteredJobs.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} align="center" sx={{ py: 5, color: 'text.secondary' }}>
-                  {searchQuery ? 'ไม่พบงานที่ค้นหา' : 'คุณยังไม่มีงานที่ได้รับมอบหมาย'}
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
-
-      {/* 👇👇👇 วางโค้ดชุดนี้เพิ่มเข้าไปที่ด้านล่างสุด (ก่อนวงเล็บปิด return) 👇👇👇 */}
-
-      {/* Dialog แสดง QR Code สำหรับลูกค้า */}
-      <Dialog open={showQR} onClose={() => setShowQR(false)} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ textAlign: 'center', bgcolor: '#1976D2', color: 'white' }}>
-              📱 สแกนเพื่อประเมินงาน
-          </DialogTitle>
-          <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
-              
-              <Typography variant="h6" gutterBottom fontWeight="bold" align="center">
-                  {selectedJob?.title}
-              </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-                  ให้ลูกค้าสแกน QR Code นี้เพื่อทำแบบสอบถาม
-              </Typography>
-              
-              {/* ส่วนสร้าง QR Code จาก Library */}
-              {selectedJob && (
-                  <Box sx={{ p: 3, border: '2px dashed #1976D2', borderRadius: 4, bgcolor: 'white', mb: 3 }}>
-                      <QRCode 
-                          // ลิงก์ไปยังหน้า PublicFeedbackPage
-                          value={`${window.location.origin}/feedback/${selectedJob.id}`} 
-                          size={200} 
-                          level="H"
-                      />
-                  </Box>
-              )}
-              
-              <Box sx={{ width: '100%', textAlign: 'center', bgcolor: '#E3F2FD', p: 2, borderRadius: 2 }}>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                      ขั้นตอนการทำงาน:
-                  </Typography>
-                  <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
-                      1. ยื่นหน้านี้ให้ลูกค้าสแกน <br/>
-                      2. ลูกค้าทำรายการบนมือถือจนเสร็จ <br/>
-                      3. เมื่อลูกค้าทำเสร็จแล้ว ให้กดปุ่มสีเขียวด้านล่าง
-                  </Typography>
-
-                  <Stack direction="row" spacing={2} justifyContent="center" mt={2}>
-                      <Button variant="outlined" onClick={() => setShowQR(false)}>
-                          ยกเลิก
-                      </Button>
-                      
-                      {/* ปุ่มปิดงาน */}
-                      <Button 
-                          variant="contained" 
-                          color="success" 
-                          size="large"
-                          onClick={() => {
-                              setShowQR(false); 
-                              // สั่งปิดงานเมื่อลูกค้าทำเสร็จ
-                              handleSubmitJob(true); 
-                          }}
-                      >
-                          ลูกค้าทำเสร็จแล้ว (ปิดงาน)
-                      </Button>
-                  </Stack>
-              </Box>
-          </DialogContent>
-      </Dialog>
-
+                <TableContainer>
+                    <Table>
+                        <TableHead sx={{ bgcolor: '#424242' }}>
+                            <TableRow>
+                                <TableCell sx={{ color: 'white' }}>งาน / สถานที่</TableCell>
+                                <TableCell sx={{ color: 'white' }}>สถานะ</TableCell>
+                                <TableCell sx={{ color: 'white' }}>วันที่ / ช่วงเวลา</TableCell>
+                                <TableCell align="center" sx={{ color: 'white' }}>จัดการ</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {filteredJobs.map((job) => {
+                                const dateShow = dayjs(job.start_time).format('DD/MM/YYYY');
+                                const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+                                return (
+                                <TableRow key={job.id} hover>
+                                    <TableCell>
+                                        <Typography fontWeight={600}>{job.title}</Typography>
+                                        <Stack direction="row" alignItems="center" spacing={0.5} mt={0.5} color="text.secondary">
+                                            <LocationOn fontSize="small" color="action" />
+                                            <Typography variant="caption">{job.location || '-'}</Typography>
+                                        </Stack>
+                                        {job.is_feedback_required && <Chip label="ต้องประเมิน" size="small" color="warning" variant="outlined" icon={<AssignmentIcon />} sx={{ mt: 0.5, height: 20, fontSize: 10 }} />}
+                                    </TableCell>
+                                    <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold', minWidth: '90px' }} /></TableCell>
+                                    <TableCell>
+                                        <Stack direction="row" alignItems="center" spacing={1}>
+                                            <CalendarIcon fontSize="small" color="primary" />
+                                            <Typography variant="body2" fontWeight="bold">{dateShow}</Typography>
+                                        </Stack>
+                                        <Chip label={slotLabel} size="small" variant="filled" color="default" sx={{ mt: 0.5, fontSize: '0.75rem' }} />
+                                    </TableCell>
+                                    <TableCell align="center">
+                                        <Button variant="outlined" size="small" startIcon={<Visibility />} onClick={() => openJobDetail(job)}>รายละเอียด</Button>
+                                    </TableCell>
+                                </TableRow>
+                                );
+                            })}
+                            {filteredJobs.length === 0 && <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: 'text.secondary' }}>ไม่พบงานที่ได้รับมอบหมาย</TableCell></TableRow>}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
             </Paper>
+
+            <Dialog open={showQR} onClose={() => setShowQR(false)} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ textAlign: 'center', bgcolor: '#1976D2', color: 'white' }}>📱 สแกนเพื่อประเมินงาน</DialogTitle>
+                <DialogContent sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+                    <Typography variant="h6" gutterBottom fontWeight="bold" align="center">{selectedJob?.title}</Typography>
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>ให้ลูกค้าสแกน QR Code นี้เพื่อทำแบบสอบถาม</Typography>
+                    {selectedJob && (
+                        <Box sx={{ p: 3, border: '2px dashed #1976D2', borderRadius: 4, bgcolor: 'white', mb: 3 }}>
+                            <QRCode value={`${window.location.origin}/feedback/${selectedJob.id}`} size={200} level="H" />
+                        </Box>
+                    )}
+                    <Stack spacing={2} width="100%">
+                        <Button variant="contained" color="success" size="large" onClick={() => { setShowQR(false); handleSubmitJob(true); }}>ลูกค้าทำเสร็จแล้ว (ปิดงาน)</Button>
+                        <Divider>หรือ</Divider>
+                        <Button variant="outlined" color="primary" onClick={() => { setShowQR(false); setOpenFeedback(true); }}>ทำรายการบนเครื่องนี้ (Manual)</Button>
+                    </Stack>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={openFeedback} onClose={handleCloseFeedback} maxWidth="sm" fullWidth>
+                <DialogTitle sx={{ bgcolor: '#1976D2', color: 'white' }}>📋 แบบประเมินความพึงพอใจ</DialogTitle>
+                <DialogContent sx={{ pt: 3 }}>
+                    {!submitSuccess ? (
+                        <><Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 4 }}><Step><StepLabel>ให้คะแนน</StepLabel></Step><Step><StepLabel>ข้อเสนอแนะ & เซ็นชื่อ</StepLabel></Step></Stepper>{renderStepContent(activeStep)}</>
+                    ) : (
+                        <Box textAlign="center" py={4}><CheckCircleIcon color="success" sx={{ fontSize: 80, mb: 2 }} /><Typography variant="h5" color="success.main" gutterBottom>ขอบคุณสำหรับการประเมิน</Typography><Typography variant="body1" color="text.secondary">ข้อมูลถูกบันทึกเรียบร้อยแล้ว</Typography></Box>
+                    )}
+                </DialogContent>
+                <DialogActions>{!submitSuccess ? (<><Button disabled={activeStep === 0} onClick={() => setActiveStep(prev => prev - 1)}>ย้อนกลับ</Button>{activeStep === 0 ? <Button variant="contained" onClick={() => setActiveStep(1)}>ถัดไป</Button> : <Button variant="contained" color="success" onClick={handleCustomerSubmit}>ยืนยันการประเมิน</Button>}</>) : (<Button variant="contained" color="primary" onClick={handleFinalUpload}>เสร็จสิ้น (ส่งงาน)</Button>)}</DialogActions>
+            </Dialog>
+
             <Dialog open={openDetailDialog} onClose={() => !uploading && setOpenDetailDialog(false)} fullWidth maxWidth="sm">
                 <Box sx={{ bgcolor: selectedJob ? getStatusColor(selectedJob.status) : 'grey', height: 8, width: '100%' }} />
                 <DialogTitle sx={{ pb: 1 }}>
@@ -564,148 +345,58 @@ function MyJobsPage() {
                 <DialogContent sx={{ pt: 3 }}>
                     {selectedJob && (
                         <Stack spacing={3}>
+                            <Box sx={{ p: 2, bgcolor: '#E3F2FD', borderRadius: 2, border: '1px solid #BBDEFB', textAlign: 'center' }}>
+                                <Typography variant="caption" color="text.secondary">เวลานัดหมาย</Typography>
+                                <Typography variant="h6" color="primary" fontWeight="bold">{selectedJob.display_date}</Typography>
+                                <Chip label={selectedJob.display_slot} color="info" sx={{ mt: 0.5 }} />
+                            </Box>
                             {selectedJob.map_url && <Button variant="outlined" color="primary" startIcon={<MapIcon />} href={selectedJob.map_url} target="_blank">ดูแผนที่</Button>}
                             <Box sx={{ p: 2, bgcolor: '#FFF3E0', borderRadius: 2, border: '1px solid #FFE0B2' }}><Stack direction="row" spacing={1} alignItems="center" mb={1}><PersonIcon color="warning" /><Typography variant="subtitle2" fontWeight="bold">ติดต่อลูกค้า</Typography></Stack><Typography variant="body1">คุณ {selectedJob.customer_name || '-'}</Typography><Stack direction="row" spacing={1} alignItems="center" mt={0.5}><PhoneIcon fontSize="small" color="action" /><Typography variant="body2" color="text.secondary">{selectedJob.customer_phone || '-'}</Typography></Stack></Box>
                             <Box sx={{ p: 2, bgcolor: '#F5F5F5', borderRadius: 2, border: '1px solid #eee' }}><Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{selectedJob.description || "-"}</Typography></Box>
-                            
-                            {/* แสดงรูปภาพที่ส่งงานไปแล้ว (ใช้ฟังก์ชันช่วย) */}
                             {renderSubmittedImages(selectedJob.image_url)}
-
                             <Divider />
                             <Box sx={{ textAlign: 'center' }}>
                                 {selectedJob.status === 'APPROVED' ? (
-                                    <Chip label="งานเสร็จสมบูรณ์แล้ว (ไม่สามารถแก้ไขได้)" color="success" icon={<DoneIcon />} />
+                                    <Chip label="งานเสร็จสมบูรณ์แล้ว" color="success" icon={<DoneIcon />} />
                                 ) : (
                                     <>
                                         {selectedJob.status === 'PENDING' && <Button variant="contained" color="warning" size="large" startIcon={<PlayIcon />} onClick={handleStartJob}>เริ่มปฏิบัติงาน</Button>}
                                         {selectedJob.status === 'IN_PROGRESS' && (
                                             <Box sx={{ p: 2, border: '2px dashed #ccc', borderRadius: 2, bgcolor: '#FAFAFA' }}>
-                                                <Typography variant="subtitle2" gutterBottom color="primary">📸 อัปโหลดรูปผลงานเพื่อส่งงาน (เลือกได้หลายรูป)</Typography>
-                                                
-                                                {/* --- แก้ไข Point 4: ส่วนแสดง Preview หลายรูป --- */}
+                                                <Typography variant="subtitle2" gutterBottom color="primary">📸 อัปโหลดรูปผลงานเพื่อส่งงาน</Typography>
                                                 {previewUrls.length > 0 && (
                                                     <Stack direction="row" spacing={1} sx={{ mb: 2, overflowX: 'auto', py: 1 }}>
                                                         {previewUrls.map((url, index) => (
                                                             <Box key={index} sx={{ position: 'relative', width: 100, height: 100, flexShrink: 0 }}>
                                                                 <img src={url} alt={`Preview ${index}`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 8 }} />
-                                                                <IconButton
-                                                                    size="small"
-                                                                    onClick={() => handleRemoveImage(index)}
-                                                                    sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'error.main', color: 'white', '&:hover': { bgcolor: 'error.dark' } }}
-                                                                >
-                                                                    <CloseIcon fontSize="small" />
-                                                                </IconButton>
+                                                                <IconButton size="small" onClick={() => handleRemoveImage(index)} sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'error.main', color: 'white', '&:hover': { bgcolor: 'error.dark' } }}><CloseIcon fontSize="small" /></IconButton>
                                                             </Box>
                                                         ))}
                                                     </Stack>
                                                 )}
-
-                                                {/* ปุ่มเลือกรูป เพิ่ม attribute 'multiple' */}
                                                 <Button variant="outlined" component="label" startIcon={previewUrls.length > 0 ? <AddPhotoIcon/> : <CloudUploadIcon />} sx={{ mb: 2 }}>
                                                     {previewUrls.length > 0 ? "เพิ่มรูปภาพอีก" : "เลือกรูปภาพ"}
                                                     <input hidden accept="image/*" type="file" multiple onChange={handleImageSelect} />
                                                 </Button>
-                                                
-                                                <Button variant="contained" fullWidth size="large" sx={{ bgcolor: '#0288D1', color: 'white' }} startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <DoneIcon />} disabled={selectedImages.length === 0 || uploading} onClick={handlePreSubmit}>{uploading ? `กำลังอัปโหลด (${selectedImages.length} รูป)...` : 'ยืนยันส่งงาน'}</Button>
+                                                <Button variant="contained" fullWidth size="large" sx={{ bgcolor: '#0288D1', color: 'white' }} startIcon={uploading ? <CircularProgress size={20} color="inherit" /> : <DoneIcon />} disabled={selectedImages.length === 0 || uploading} onClick={handlePreSubmit}>{uploading ? `กำลังอัปโหลด...` : 'ยืนยันส่งงาน'}</Button>
                                             </Box>
                                         )}
-                                        {selectedJob.status === 'WAITING_REVIEW' && <Stack spacing={2} alignItems="center"><Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" /><Button variant="text" color="error" size="small" startIcon={<CancelIcon />} onClick={handleCancelSubmission}>ยกเลิกการส่งงาน (แก้ไขใหม่)</Button></Stack>}
+                                        {selectedJob.status === 'WAITING_REVIEW' && (
+                                            <Stack spacing={1} alignItems="center">
+                                                <Chip label="รอแอดมินตรวจสอบ" color="primary" variant="outlined" />
+                                                <Button variant="text" color="error" size="small" onClick={handleCancelSubmission}>ยกเลิกการส่ง (เพื่อแก้ไข)</Button>
+                                            </Stack>
+                                        )}
                                     </>
                                 )}
                             </Box>
                         </Stack>
                     )}
                 </DialogContent>
-                <DialogActions sx={{ p: 2 }}><Button variant="outlined" onClick={() => setOpenDetailDialog(false)} disabled={uploading} color="inherit">ปิดหน้าต่าง</Button></DialogActions>
+                <DialogActions><Button onClick={() => setOpenDetailDialog(false)}>ปิด</Button></DialogActions>
             </Dialog>
-
-            <Dialog open={openFeedback} onClose={handleCloseFeedback} fullWidth maxWidth="md">
-        
-        {/* CASE 1: หน้าจอขอบคุณ (ลูกค้าเห็นหน้านี้) - เหมือนเดิม */}
-        {submitSuccess ? (
-            <Box sx={{ p: 5, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircleIcon sx={{ fontSize: 80, color: '#2E7D32', mb: 2 }} />
-                <Typography variant="h4" gutterBottom fontWeight="bold" color="#2E7D32">
-                    ขอบคุณที่ใช้บริการครับ
-                </Typography>
-                <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                    ข้อมูลการประเมินถูกบันทึกแล้ว กรุณาส่งคืนโทรศัพท์ให้เจ้าหน้าที่
-                </Typography>
-                <Button 
-                    variant="contained" 
-                    size="large" 
-                    onClick={handleStaffCloseThankYou} 
-                    sx={{ bgcolor: '#424242', color: 'white', px: 4 }}
-                >
-                    พนักงานรับเครื่องคืน
-                </Button>
-            </Box>
-
-        /* CASE 2: หน้าเตรียมส่งงาน (พนักงานเห็นหน้านี้) - เหมือนเดิม */
-        ) : customerFinished ? (
-            <Box sx={{ p: 4, textAlign: 'center' }}>
-                <AssignmentIcon sx={{ fontSize: 60, color: '#1976D2', mb: 2 }} />
-                <Typography variant="h5" gutterBottom fontWeight="bold">
-                    พร้อมส่งงาน
-                </Typography>
-                
-                <Box sx={{ bgcolor: '#E3F2FD', p: 2, borderRadius: 2, mb: 3, mx: 'auto', maxWidth: 400 }}>
-                    <Stack direction="row" alignItems="center" spacing={1} justifyContent="center" mb={1}>
-                        <DoneIcon color="success" />
-                        <Typography variant="body1" fontWeight="bold">ลูกค้าทำแบบประเมินแล้ว</Typography>
-                    </Stack>
-                    <Stack direction="row" alignItems="center" spacing={1} justifyContent="center">
-                        <DoneIcon color="success" />
-                        <Typography variant="body1" fontWeight="bold">ลูกค้าลงลายมือชื่อแล้ว</Typography>
-                    </Stack>
-                    <Typography variant="caption" color="text.secondary" display="block" mt={2}>
-                        (ระบบซ่อนคะแนนประเมินเพื่อความเป็นส่วนตัวของลูกค้า)
-                    </Typography>
-                </Box>
-
-                <Stack direction="row" spacing={2} justifyContent="center">
-
-                    <Button 
-                        variant="contained" 
-                        color="primary" 
-                        size="large" 
-                        onClick={handleFinalUpload} 
-                        disabled={uploading}
-                        startIcon={uploading ? <CircularProgress size={20} color="inherit"/> : <CloudUploadIcon />}
-                    >
-                        {uploading ? 'กำลังอัปโหลด...' : 'ยืนยันและส่งงาน'}
-                    </Button>
-                </Stack>
-            </Box>
-
-        /* CASE 3: แบบฟอร์มปกติ (แก้ส่วนนี้ครับ!) */
-        ) : (
-            <>
-                <DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white' }}>แบบสอบถามความพึงพอใจ</DialogTitle>
-                <DialogContent sx={{ pt: 3 }}>
-                    {/* ✅ แก้: เหลือแค่ 2 ขั้นตอน (ให้คะแนน -> ยืนยัน) */}
-                    <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
-                        <Step><StepLabel>ประเมินความพึงพอใจ</StepLabel></Step>
-                        <Step><StepLabel>ข้อเสนอแนะและลงนาม</StepLabel></Step>
-                    </Stepper>
-                    <Box sx={{ px: 2 }}>{renderStepContent(activeStep)}</Box>
-                </DialogContent>
-                <DialogActions sx={{ p: 3 }}>
-                    <Button disabled={activeStep === 0} onClick={() => setActiveStep((prev) => prev - 1)}>ย้อนกลับ</Button>
-                    
-                    {/* ✅ แก้: เงื่อนไขจบงานคือ activeStep === 1 (เพราะมีแค่ index 0 กับ 1) */}
-                    {activeStep === 1 ? 
-                        <Button variant="contained" color="primary" onClick={handleCustomerSubmit}>
-                            ยืนยันการประเมิน
-                        </Button> 
-                        : 
-                        <Button variant="contained" onClick={() => setActiveStep((prev) => prev + 1)}>ถัดไป</Button>
-                    }
-                </DialogActions>
-            </>
-        )}
-      </Dialog>
         </Layout>
     );
 }
+
 export default MyJobsPage;
