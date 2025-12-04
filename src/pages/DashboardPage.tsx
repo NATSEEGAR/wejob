@@ -97,7 +97,7 @@ function DashboardPage() {
       title: '', location: '', map_url: '', description: '', 
       date: dayjs().format('YYYY-MM-DD'), 
       end_date: dayjs().format('YYYY-MM-DD'),
-      time_slot: 'ALL_DAY', 
+      time_slot: 'ALL_DAY',
       is_multi_day: false,
       assigned_to: [] as string[], 
       customer_name: '', customer_phone: '', selected_depts: [] as number[], is_feedback_required: false 

@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
     Typography, Button, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Stack,
     Dialog, DialogTitle, DialogContent, DialogActions, Divider, Box, CircularProgress, TextField, InputAdornment, Rating, IconButton, Stepper, Step, StepLabel,
-    MenuItem, Select, FormControl, TablePagination, InputLabel // Import เพิ่ม
+    MenuItem, Select, FormControl, TablePagination
 } from '@mui/material';
+import imageCompression from 'browser-image-compression';
 import { supabase } from '../supabaseClient';
 import {
     LocationOn, Visibility,
@@ -84,6 +85,7 @@ function MyJobsPage() {
 
     const [openFeedback, setOpenFeedback] = useState(false);
     const [showQR, setShowQR] = useState(false);
+    const [isCustomerFinished, setIsCustomerFinished] = useState(false);
     const [activeStep, setActiveStep] = useState(0);
     const sigPad = useRef<any>(null);
 
@@ -94,6 +96,29 @@ function MyJobsPage() {
     });
 
     useEffect(() => { fetchMyJobs(); }, []);
+
+    useEffect(() => {
+        let subscription: any;
+        if (showQR && selectedJob) {
+            setIsCustomerFinished(false); 
+
+            // เช็คก่อนว่ามีข้อมูลในฐานข้อมูลหรือยัง
+            const checkStatus = async () => {
+                const { data } = await supabase.from('JobFeedbacks').select('id').eq('job_id', selectedJob.id).single();
+                if (data) setIsCustomerFinished(true);
+            };
+            checkStatus();
+
+            // เปิดหูฟัง (Real-time)
+            subscription = supabase.channel('check-feedback')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'JobFeedbacks', filter: `job_id=eq.${selectedJob.id}` }, () => {
+                    setIsCustomerFinished(true);
+                    showSuccess("ลูกค้าประเมินเสร็จแล้ว", "กดปิดงานได้เลยครับ");
+                })
+                .subscribe();
+        }
+        return () => { if (subscription) supabase.removeChannel(subscription); };
+    }, [showQR, selectedJob]);
 
     const fetchMyJobs = async () => {
         const { data: { user } } = await supabase.auth.getUser();
@@ -122,14 +147,60 @@ function MyJobsPage() {
         setOpenDetailDialog(true);
     };
 
-    const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files.length > 0) {
-            const newFiles = Array.from(event.target.files);
-            setSelectedImages((prevFiles) => [...prevFiles, ...newFiles]);
-            const newFileUrls = newFiles.map((file) => URL.createObjectURL(file));
-            setPreviewUrls((prevUrls) => [...prevUrls, ...newFileUrls]);
+            // 1. เปิดสถานะ Loading (ล็อกปุ่มส่งงานชั่วคราว ขณะบีบอัด)
+            setUploading(true);
+            
+            const originalFiles = Array.from(event.target.files);
+            const compressedFiles: File[] = [];
+            const newPreviewUrls: string[] = [];
+
+            // 2. ตั้งค่าการบีบอัด (ปรับจูนได้ตามใจชอบ)
+            const options = {
+                maxSizeMB: 0.5,          // 📉 บีบให้ไฟล์ไม่เกิน 0.5 MB (500KB)
+                maxWidthOrHeight: 1280,  // 🖼️ ย่อขนาดภาพด้านที่ยาวที่สุดไม่เกิน 1280px (ชัดพอสำหรับงานตรวจ)
+                useWebWorker: true,      // 🚀 ใช้ WebWorker เพื่อไม่ให้หน้าเว็บค้างขณะบีบอัด
+                fileType: "image/jpeg"   // 📷 แปลงเป็น JPEG เสมอ (ไฟล์เล็กกว่า PNG)
+            };
+
+            try {
+                // 3. วนลูปบีบอัดทีละรูป
+                for (const file of originalFiles) {
+                    // เช็คว่าเป็นไฟล์รูปไหม
+                    if (file.type.startsWith('image/')) {
+                        // console.log(`ขนาดเดิม: ${file.size / 1024 / 1024} MB`); // เอาไว้ดูเล่นใน Console
+                        
+                        const compressedFile = await imageCompression(file, options);
+                        
+                        // console.log(`ขนาดใหม่: ${compressedFile.size / 1024 / 1024} MB`); // ดูผลลัพธ์
+                        
+                        compressedFiles.push(compressedFile);
+                        newPreviewUrls.push(URL.createObjectURL(compressedFile));
+                    } else {
+                        // ถ้าไม่ใช่รูป (เช่น PDF) ก็เก็บไว้เหมือนเดิม
+                        compressedFiles.push(file);
+                        newPreviewUrls.push(URL.createObjectURL(file));
+                    }
+                }
+
+                // 4. อัปเดตลง State
+                setSelectedImages((prevFiles) => [...prevFiles, ...compressedFiles]);
+                setPreviewUrls((prevUrls) => [...prevUrls, ...newPreviewUrls]);
+
+            } catch (error) {
+                console.error("Compression Error:", error);
+                showError("เกิดข้อผิดพลาด", "ไม่สามารถบีบอัดรูปภาพได้ แต่รูปเดิมยังอยู่");
+                // ถ้าบีบไม่ได้ ให้ใช้รูปเดิมไปก่อน
+                setSelectedImages((prevFiles) => [...prevFiles, ...originalFiles]);
+                const fallbackUrls = originalFiles.map((f) => URL.createObjectURL(f));
+                setPreviewUrls((prevUrls) => [...prevUrls, ...fallbackUrls]);
+            } finally {
+                // 5. ปิดสถานะ Loading และเคลียร์ช่องเลือกไฟล์
+                setUploading(false);
+                event.target.value = '';
+            }
         }
-        event.target.value = '';
     };
 
     const handleRemoveImage = (indexToRemove: number) => {
@@ -154,6 +225,25 @@ function MyJobsPage() {
             setShowQR(true); 
         } else { 
             handleSubmitJob(); 
+        }
+    };
+
+    const handleCheckAndSubmit = async () => {
+        // 1. เช็คจาก State (เร็วสุด)
+        if (isCustomerFinished) {
+            setShowQR(false);
+            handleSubmitJob(true);
+            return;
+        }
+
+        // 2. ถ้า State ยังไม่เปลี่ยน ให้เช็คกับ Database อีกที (กันเหนียว)
+        const { data } = await supabase.from('JobFeedbacks').select('id').eq('job_id', selectedJob.id).single();
+        if (data) {
+            setShowQR(false);
+            handleSubmitJob(true);
+        } else {
+            // 3. ถ้ายังไม่มีข้อมูลจริงๆ ให้แจ้งเตือน
+            showError("ยังปิดงานไม่ได้", "ลูกค้ายังประเมินไม่เสร็จสิ้น");
         }
     };
 
@@ -352,9 +442,21 @@ function MyJobsPage() {
                         </Box>
                     )}
                     <Stack spacing={2} width="100%">
-                        <Button variant="contained" color="success" size="large" onClick={() => { setShowQR(false); handleSubmitJob(true); }}>ลูกค้าทำเสร็จแล้ว (ปิดงาน)</Button>
-                        <Divider>หรือ</Divider>
-                        <Button variant="outlined" color="primary" onClick={() => { setShowQR(false); setOpenFeedback(true); }}>ทำรายการบนเครื่องนี้ (Manual)</Button>
+                        <Button 
+                        variant="contained" 
+                        // เปลี่ยนสีปุ่ม: ถ้าเสร็จแล้วเป็นสีเขียว (success), ยังไม่เสร็จเป็นสีน้ำเงิน (primary)
+                        color={isCustomerFinished ? "success" : "primary"}
+                        size="large" 
+                        // ✅ เรียกใช้ฟังก์ชันตรวจสอบที่เราเพิ่งสร้าง
+                        onClick={handleCheckAndSubmit}
+                        fullWidth
+                        sx={{ mt: 3 }}
+                    >
+                        {/* เปลี่ยนข้อความปุ่มตามสถานะ */}
+                        {isCustomerFinished ? "ยืนยันปิดงาน (เสร็จสิ้น)" : "ลูกค้าทำเสร็จแล้ว (ปิดงาน)"}
+                    </Button>
+                        
+                        
                     </Stack>
                 </DialogContent>
             </Dialog>
