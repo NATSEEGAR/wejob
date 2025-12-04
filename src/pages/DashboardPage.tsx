@@ -709,7 +709,7 @@ function DashboardPage() {
                             </Box>
 
                             {/* รูปภาพส่งงาน */}
-                            {selectedJob.status === 'APPROVED' && selectedJob.image_url && renderJobImages(selectedJob.image_url)}
+                            {(selectedJob.status === 'APPROVED' || selectedJob.status === 'WAITING_REVIEW') && selectedJob.image_url && renderJobImages(selectedJob.image_url)}
 
                             {/* Feedback ลูกค้า */}
                             {jobFeedback && profile?.role === 'ADMIN' && (
