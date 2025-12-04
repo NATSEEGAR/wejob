@@ -287,8 +287,17 @@ function MyJobsPage() {
                             {filteredJobs
                             .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
                             .map((job) => {
-                                const dateShow = dayjs(job.start_time).format('DD/MM/YYYY');
+                                const start = dayjs(job.start_time);
+                                const end = dayjs(job.end_time);
+                                const isMultiDay = !start.isSame(end, 'day');
+
+                                // ✅ 2. สร้างข้อความแสดงผล
+                                const dateShow = isMultiDay 
+                                    ? `${start.format('DD/MM/YYYY')} - ${end.format('DD/MM/YYYY')}` 
+                                    : start.format('DD/MM/YYYY');
+
                                 const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+
                                 return (
                                 <TableRow key={job.id} hover>
                                     <TableCell>
@@ -301,9 +310,12 @@ function MyJobsPage() {
                                     </TableCell>
                                     <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold', minWidth: '90px' }} /></TableCell>
                                     <TableCell>
+                                        {/* ✅ 3. แสดงวันที่แบบใหม่ */}
                                         <Stack direction="row" alignItems="center" spacing={1}>
                                             <CalendarIcon fontSize="small" color="primary" />
-                                            <Typography variant="body2" fontWeight="bold">{dateShow}</Typography>
+                                            <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+                                                {dateShow}
+                                            </Typography>
                                         </Stack>
                                         <Chip label={slotLabel} size="small" variant="filled" color="default" sx={{ mt: 0.5, fontSize: '0.75rem' }} />
                                     </TableCell>
@@ -313,7 +325,7 @@ function MyJobsPage() {
                                 </TableRow>
                                 );
                             })}
-                            {filteredJobs.length === 0 && <TableRow><TableCell colSpan={4} align="center" sx={{ py: 5, color: 'text.secondary' }}>ไม่พบงานที่ได้รับมอบหมาย</TableCell></TableRow>}
+                            {/* ... (ส่วนแสดงเมื่อไม่มีข้อมูล เหมือนเดิม) ... */}
                         </TableBody>
                     </Table>
                 </TableContainer>

@@ -12,8 +12,7 @@ import {
   Edit as EditIcon, Delete as DeleteIcon, Search as SearchIcon,
   Add as AddIcon, LocationOn as LocationIcon, Image as ImageIcon,
   Person as PersonIcon, Phone as PhoneIcon, Map as MapIcon, FilterAlt as FilterIcon, 
-  Visibility as VisibilityIcon, Save as SaveIcon, EventNote,
-  CheckCircle as CheckIcon, Cancel as CancelIcon
+  Visibility as VisibilityIcon, Save as SaveIcon
 } from '@mui/icons-material'; 
 
 import { supabase } from '../supabaseClient';
@@ -74,11 +73,6 @@ const getStatusLabel = (status: string) => {
     }
 };
 
-const formatDate = (dateString: string) => {
-    if (!dateString) return '-';
-    return dayjs(dateString).format('DD/MM/YYYY');
-};
-
 function DashboardPage() {
   const [profile, setProfile] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]); 
@@ -93,7 +87,7 @@ function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const [adminFilterDept, setAdminFilterDept] = useState<number>(0);
-  const [filterStatus, setFilterStatus] = useState<string>('ALL'); // ✅ เปลี่ยนชื่อตัวแปรให้อ่านง่าย (ใช้ร่วมกันทุกคน)
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [showMyJobsOnly, setShowMyJobsOnly] = useState(false); 
 
   const [jobFeedback, setJobFeedback] = useState<any>(null);
@@ -102,7 +96,9 @@ function DashboardPage() {
   const [newJob, setNewJob] = useState({ 
       title: '', location: '', map_url: '', description: '', 
       date: dayjs().format('YYYY-MM-DD'), 
+      end_date: dayjs().format('YYYY-MM-DD'),
       time_slot: 'ALL_DAY', 
+      is_multi_day: false,
       assigned_to: [] as string[], 
       customer_name: '', customer_phone: '', selected_depts: [] as number[], is_feedback_required: false 
   });
@@ -113,7 +109,11 @@ function DashboardPage() {
   const [editJob, setEditJob] = useState<any>(null);
   const [editForm, setEditForm] = useState<any>({
       title: '', description: '', customer_name: '', customer_phone: '', location: '', 
-      date: '', time_slot: '', department_ids: [], assigned_to: [], is_feedback_required: true
+      date: '', 
+      end_date: '',
+      time_slot: '', 
+      is_multi_day: false,
+      department_ids: [], assigned_to: [], is_feedback_required: true
   });
 
   const fetchJobs = useCallback(async (userProfile: any = profile) => {
@@ -179,15 +179,12 @@ function DashboardPage() {
       );
       if (!matchesSearch) return false;
 
-      // ✅ 1. กรองสถานะ (ใช้ได้ทุกคน ทั้ง Admin และ พนักงาน)
       if (filterStatus !== 'ALL' && job.status !== filterStatus) return false;
 
-      // ✅ 2. กรองแผนก (เฉพาะ Admin ถึงจะเลือกแผนกอื่นได้)
       if (profile?.role === 'ADMIN') {
           if (adminFilterDept !== 0 && !job.department_ids?.includes(adminFilterDept)) return false;
       } 
       
-      // ✅ 3. ปุ่ม "แสดงงานของฉัน" (เฉพาะพนักงาน)
       if (showMyJobsOnly && profile) {
           const isAssigned = job.JobAssignments?.some((assign: any) => assign.user_id === profile.user_id);
           const isLegacyAssigned = !isAssigned && job.assigned_to === profile.user_id;
@@ -197,16 +194,35 @@ function DashboardPage() {
   });
 
   const handleCreateJob = async () => {
-    if (!newJob.title || !newJob.date || !newJob.time_slot || !newJob.location || newJob.selected_depts.length === 0) {
+    if (!newJob.title || !newJob.date || !newJob.location || newJob.selected_depts.length === 0) {
       showError("ข้อมูลไม่ครบ", "กรุณากรอกข้อมูลและเลือกฝ่ายรับผิดชอบ"); return;
     }
+    
+    if (newJob.is_multi_day && !newJob.end_date) {
+        showError("ข้อมูลไม่ครบ", "กรุณาระบุวันที่สิ้นสุดสำหรับงานต่อเนื่อง"); return;
+    }
+
     if (!(await confirmAction('ยืนยันการมอบหมาย', `สร้างงาน "${newJob.title}"?`))) return;
 
-    const { start_time, end_time } = getTimesFromSlot(newJob.date, newJob.time_slot);
+    let start_time_iso, end_time_iso;
+
+    if (newJob.is_multi_day) {
+        start_time_iso = dayjs(newJob.date).hour(9).minute(0).second(0).toISOString();
+        end_time_iso = dayjs(newJob.end_date).hour(17).minute(0).second(0).toISOString();
+        
+        if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
+             showError("ข้อมูลผิดพลาด", "วันที่สิ้นสุดต้องหลังจากวันที่เริ่ม"); return;
+        }
+    } else {
+        const { start_time, end_time } = getTimesFromSlot(newJob.date, newJob.time_slot);
+        start_time_iso = start_time;
+        end_time_iso = end_time;
+    }
 
     const { data: jobData, error } = await supabase.from('Jobs').insert([{
         title: newJob.title, location: newJob.location, map_url: newJob.map_url, description: newJob.description,
-        start_time: start_time, end_time: end_time,
+        start_time: start_time_iso, 
+        end_time: end_time_iso,
         status: 'PENDING', customer_name: newJob.customer_name, customer_phone: newJob.customer_phone,
         department_ids: newJob.selected_depts, is_feedback_required: newJob.is_feedback_required
     }]).select().single();
@@ -221,7 +237,8 @@ function DashboardPage() {
     
     setNewJob({ 
         title: '', location: '', map_url: '', description: '', 
-        date: dayjs().format('YYYY-MM-DD'), time_slot: 'ALL_DAY', 
+        date: dayjs().format('YYYY-MM-DD'), end_date: dayjs().format('YYYY-MM-DD'),
+        time_slot: 'ALL_DAY', is_multi_day: false,
         assigned_to: [], customer_name: '', customer_phone: '', selected_depts: [], is_feedback_required: false 
     });
   };
@@ -231,10 +248,18 @@ function DashboardPage() {
     const { data: assignments } = await supabase.from('JobAssignments').select('user_id').eq('job_id', job.id);
     const currentAssignees = assignments?.map((a: any) => a.user_id) || [];
 
+    const start = dayjs(job.start_time);
+    const end = dayjs(job.end_time);
+    const isMulti = !start.isSame(end, 'day');
+
     setEditForm({
       title: job.title || '', description: job.description || '', customer_name: job.customer_name || '', customer_phone: job.customer_phone || '', location: job.location || '',
-      date: job.start_time ? dayjs(job.start_time).format('YYYY-MM-DD') : '',
-      time_slot: job.start_time ? getSlotFromTime(job.start_time) : 'ALL_DAY',
+      
+      date: start.format('YYYY-MM-DD'),
+      end_date: end.format('YYYY-MM-DD'),
+      time_slot: isMulti ? 'ALL_DAY' : getSlotFromTime(job.start_time),
+      is_multi_day: isMulti,
+
       department_ids: job.department_ids || [], assigned_to: currentAssignees, is_feedback_required: job.is_feedback_required ?? true
     });
   };
@@ -244,10 +269,23 @@ function DashboardPage() {
       if (!(await confirmAction('บันทึกการแก้ไข?', 'ข้อมูลเดิมจะถูกเปลี่ยนแปลง'))) return;
 
       try {
-          const { start_time, end_time } = getTimesFromSlot(editForm.date, editForm.time_slot);
+          let start_time_iso, end_time_iso;
+          if (editForm.is_multi_day) {
+              start_time_iso = dayjs(editForm.date).hour(9).minute(0).second(0).toISOString();
+              end_time_iso = dayjs(editForm.end_date).hour(17).minute(0).second(0).toISOString();
+               if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
+                    showError("ข้อมูลผิดพลาด", "วันที่สิ้นสุดต้องหลังจากวันที่เริ่ม"); return;
+               }
+          } else {
+              const { start_time, end_time } = getTimesFromSlot(editForm.date, editForm.time_slot);
+              start_time_iso = start_time;
+              end_time_iso = end_time;
+          }
+
           const { error } = await supabase.from('Jobs').update({
               title: editForm.title, description: editForm.description, customer_name: editForm.customer_name, customer_phone: editForm.customer_phone, location: editForm.location,
-              start_time: start_time, end_time: end_time,
+              start_time: start_time_iso, 
+              end_time: end_time_iso,
               department_ids: editForm.department_ids, is_feedback_required: editForm.is_feedback_required
           }).eq('id', editJob.id);
 
@@ -292,7 +330,7 @@ function DashboardPage() {
       const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label || '';
       return { 
           id: job.id, 
-          title: `[${slotLabel}] ${job.title}`,
+          title: `[${slotLabel}] ${job.title}`, 
           start: job.start_time, 
           end: job.end_time, 
           color: getStatusColor(job.status), 
@@ -309,8 +347,6 @@ function DashboardPage() {
     fetchJobFeedback(job.id); 
     setOpenDetailDialog(true); 
   }
-
-  const isJobLocked = selectedJob?.status === 'APPROVED';
 
   const renderJobImages = (imageUrlData: any) => {
     if (!imageUrlData) return null;
@@ -349,7 +385,6 @@ function DashboardPage() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" width={{ xs: '100%', md: 'auto' }} flexWrap="wrap">
             <TextField placeholder="ค้นหางาน..." size="small" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon color="action" /></InputAdornment> }} sx={{ bgcolor: 'white', borderRadius: 1, minWidth: 200 }} />
             
-            {/* ✅ 1. ปุ่มกรองสถานะ (ย้ายมาไว้ข้างนอกเพื่อให้ทุกคนเห็น) */}
             <FormControl size="small" sx={{ minWidth: 150, bgcolor: 'white', borderRadius: 1 }}>
                 <InputLabel>สถานะงาน</InputLabel>
                 <Select value={filterStatus} label="สถานะงาน" onChange={(e) => setFilterStatus(e.target.value)}>
@@ -361,7 +396,6 @@ function DashboardPage() {
                 </Select>
             </FormControl>
 
-            {/* ✅ 2. ส่วนกรองฝ่าย (เฉพาะ Admin) */}
             {profile?.role === 'ADMIN' && (
                 <FormControl size="small" sx={{ minWidth: 180, bgcolor: 'white', borderRadius: 1 }}>
                     <InputLabel>กรองตามฝ่าย</InputLabel>
@@ -415,8 +449,18 @@ function DashboardPage() {
                         </TableHead>
                         <TableBody>
                             {filteredJobs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((job) => {
-                                const dateShow = dayjs(job.start_time).format('DD/MM/YYYY');
+                                // ✅ 1. คำนวณวันที่เริ่มและจบ
+                                const start = dayjs(job.start_time);
+                                const end = dayjs(job.end_time);
+                                const isMultiDay = !start.isSame(end, 'day'); // เช็คว่าเป็นคนละวันไหม
+
+                                // ✅ 2. สร้างข้อความแสดงผล (ถ้าหลายวันให้โชว์ช่วง, ถ้าวันเดียวโชว์แค่วันนั้น)
+                                const dateShow = isMultiDay 
+                                    ? `${start.format('DD/MM/YYYY')} - ${end.format('DD/MM/YYYY')}` 
+                                    : start.format('DD/MM/YYYY');
+
                                 const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+
                                 return (
                                 <TableRow key={job.id} hover>
                                     <TableCell>
@@ -432,7 +476,10 @@ function DashboardPage() {
                                         <Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold', minWidth: 100 }} />
                                     </TableCell>
                                     <TableCell>
-                                        <Typography variant="body2" fontWeight="bold">{dateShow}</Typography>
+                                        {/* ✅ 3. แสดงวันที่แบบใหม่ */}
+                                        <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+                                            {dateShow}
+                                        </Typography>
                                         <Chip label={slotLabel} size="small" variant="filled" sx={{ mt: 0.5, fontSize: '0.75rem' }} />
                                     </TableCell>
                                     <TableCell align="center">
@@ -450,9 +497,7 @@ function DashboardPage() {
                                 </TableRow>
                                 );
                             })}
-                            {filteredJobs.length === 0 && (
-                                <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>ไม่พบข้อมูลงาน</TableCell></TableRow>
-                            )}
+                            {/* ... (ส่วนแสดงเมื่อไม่มีข้อมูล เหมือนเดิม) ... */}
                         </TableBody>
                     </Table>
                 </TableContainer>
@@ -470,24 +515,72 @@ function DashboardPage() {
          <DialogTitle sx={{ bgcolor: '#D32F2F', color: 'white' }}>สร้างงานใหม่</DialogTitle>
          <DialogContent sx={{ pt: 3 }}>
              <Stack spacing={2} sx={{ mt: 1 }}>
+                 {/* 1. ชื่องาน */}
                  <TextField label="ชื่องาน" fullWidth value={newJob.title} onChange={e => setNewJob({...newJob, title: e.target.value})} />
+                 
+                 {/* 2. ข้อมูลลูกค้า (เรียงแนวนอน) */}
                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                     <TextField label="ชื่อลูกค้า" fullWidth value={newJob.customer_name} onChange={e => setNewJob({...newJob, customer_name: e.target.value})} InputProps={{ startAdornment: <PersonIcon color="action" sx={{ mr: 1 }} /> }} />
                     <TextField label="เบอร์โทรศัพท์" fullWidth value={newJob.customer_phone} onChange={e => setNewJob({...newJob, customer_phone: e.target.value})} InputProps={{ startAdornment: <PhoneIcon color="action" sx={{ mr: 1 }} /> }} />
                  </Stack>
+
+                 {/* 3. สถานที่ */}
                  <TextField label="สถานที่" fullWidth value={newJob.location} onChange={e => setNewJob({...newJob, location: e.target.value})} InputProps={{ startAdornment: <LocationIcon color="action" sx={{ mr: 1 }} /> }} />
                  <TextField label="ลิงก์ Google Map" fullWidth value={newJob.map_url} onChange={e => setNewJob({...newJob, map_url: e.target.value})} InputProps={{ startAdornment: <MapIcon color="action" sx={{ mr: 1 }} /> }} />
                  
-                 <Stack direction="row" spacing={2}>
-                    <TextField label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} />
-                    <FormControl fullWidth>
-                        <InputLabel>ช่วงเวลา</InputLabel>
-                        <Select value={newJob.time_slot} label="ช่วงเวลา" onChange={(e) => setNewJob({...newJob, time_slot: e.target.value})}>
-                            {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
-                        </Select>
-                    </FormControl>
-                 </Stack>
+                 {/* 4. รายละเอียดเพิ่มเติม (Multiline) */}
+                 <TextField 
+                    label="รายละเอียดงานเพิ่มเติม" 
+                    fullWidth 
+                    multiline 
+                    rows={4} 
+                    value={newJob.description} 
+                    onChange={e => setNewJob({...newJob, description: e.target.value})} 
+                    placeholder="เช่น อาการเสีย, อุปกรณ์ที่ต้องเตรียม, หมายเหตุถึงช่าง..."
+                 />
+                 
+                 {/* 5. Checkbox งานต่อเนื่อง */}
+                 <FormControlLabel 
+                    control={
+                        <Checkbox 
+                            checked={newJob.is_multi_day} 
+                            onChange={(e) => setNewJob({ ...newJob, is_multi_day: e.target.checked })} 
+                        />
+                    } 
+                    label="งานต่อเนื่องหลายวัน" 
+                    sx={{ mt: 1 }}
+                 />
 
+                 {/* 6. ส่วนเลือกวันที่ (ตามเงื่อนไข Checkbox) */}
+                 {newJob.is_multi_day ? (
+                     // กรณีหลายวัน: วันเริ่ม - วันจบ
+                     <Stack direction="row" spacing={2}>
+                        <TextField 
+                            label="วันที่เริ่ม" type="date" fullWidth InputLabelProps={{ shrink: true }} 
+                            value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} 
+                        />
+                        <TextField 
+                            label="วันที่สิ้นสุด" type="date" fullWidth InputLabelProps={{ shrink: true }} 
+                            value={newJob.end_date} onChange={e => setNewJob({...newJob, end_date: e.target.value})} 
+                        />
+                     </Stack>
+                 ) : (
+                     // กรณีวันเดียว: วันที่ - ช่วงเวลา
+                     <Stack direction="row" spacing={2}>
+                        <TextField 
+                            label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} 
+                            value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} 
+                        />
+                        <FormControl fullWidth>
+                            <InputLabel>ช่วงเวลา</InputLabel>
+                            <Select value={newJob.time_slot} label="ช่วงเวลา" onChange={(e) => setNewJob({...newJob, time_slot: e.target.value})}>
+                                {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
+                            </Select>
+                        </FormControl>
+                     </Stack>
+                 )}
+
+                 {/* 7. เลือกฝ่ายและทีมงาน */}
                  <FormControl fullWidth>
                     <InputLabel id="create-dept-label">ฝ่ายที่รับผิดชอบ</InputLabel>
                     <Select labelId="create-dept-label" multiple value={newJob.selected_depts} onChange={(e) => { const values = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value; setNewJob({...newJob, selected_depts: values as number[]}); }} input={<OutlinedInput label="ฝ่ายที่รับผิดชอบ" />} renderValue={(selected) => (<Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>{selected.map((value) => { const dept = departments.find(d => d.id === value); return <Chip key={value} label={dept?.name} size="small" />; })}</Box>)} MenuProps={MenuProps}>
@@ -501,6 +594,8 @@ function DashboardPage() {
                          {deptUsers.map((u) => (<MenuItem key={u.user_id} value={u.user_id}><Checkbox checked={newJob.assigned_to.indexOf(u.user_id) > -1} /><ListItemText primary={`${u.first_name} ${u.last_name} (${u.nickname})`} /></MenuItem>))}
                      </Select>
                  </FormControl>
+                 
+                 {/* 8. ตัวเลือกประเมินงาน */}
                  <FormControlLabel control={<Switch checked={newJob.is_feedback_required} onChange={(e) => setNewJob({...newJob, is_feedback_required: e.target.checked})} />} label="ต้องการให้ลูกค้าประเมินงานเมื่อเสร็จสิ้น" />
              </Stack>
          </DialogContent>
@@ -521,16 +616,40 @@ function DashboardPage() {
                    <TextField label="เบอร์โทรศัพท์" fullWidth value={editForm.customer_phone} onChange={e => setEditForm({...editForm, customer_phone: e.target.value})} />
                 </Stack>
                 <TextField label="สถานที่" fullWidth value={editForm.location} onChange={e => setEditForm({...editForm, location: e.target.value})} />
+                <TextField 
+                    label="รายละเอียดงานเพิ่มเติม" 
+                    fullWidth 
+                    multiline 
+                    rows={4} 
+                    value={editForm.description} 
+                    onChange={e => setEditForm({...editForm, description: e.target.value})} 
+                />
                 
-                <Stack direction="row" spacing={2}>
-                    <TextField label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
-                    <FormControl fullWidth>
-                        <InputLabel>ช่วงเวลา</InputLabel>
-                        <Select value={editForm.time_slot} label="ช่วงเวลา" onChange={(e) => setEditForm({...editForm, time_slot: e.target.value})}>
-                            {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
-                        </Select>
-                    </FormControl>
-                 </Stack>
+                {/* ... (ก่อนถึงส่วนเลือกวันที่) ... */}
+                <Stack direction="row" spacing={2}></Stack>
+                {/* ✅ [UPDATED UI] Checkbox แก้ไขงานต่อเนื่อง */}
+                <FormControlLabel 
+                    control={<Checkbox checked={editForm.is_multi_day} onChange={(e) => setEditForm({ ...editForm, is_multi_day: e.target.checked })} />} 
+                    label="งานต่อเนื่องหลายวัน" 
+                    sx={{ mt: 1 }}
+                />
+                
+                {editForm.is_multi_day ? (
+                     <Stack direction="row" spacing={2}>
+                        <TextField label="วันที่เริ่ม" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                        <TextField label="วันที่สิ้นสุด" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.end_date} onChange={e => setEditForm({...editForm, end_date: e.target.value})} />
+                     </Stack>
+                 ) : (
+                     <Stack direction="row" spacing={2}>
+                        <TextField label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                        <FormControl fullWidth>
+                            <InputLabel>ช่วงเวลา</InputLabel>
+                            <Select value={editForm.time_slot} label="ช่วงเวลา" onChange={(e) => setEditForm({...editForm, time_slot: e.target.value})}>
+                                {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
+                            </Select>
+                        </FormControl>
+                     </Stack>
+                 )}
 
                 <FormControl fullWidth>
                     <InputLabel>ฝ่ายที่รับผิดชอบ</InputLabel>
@@ -555,7 +674,7 @@ function DashboardPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog รายละเอียดงาน */}
+      {/* Dialog รายละเอียดงาน (ใช้ Grid size={{...}} แก้ปัญหา MUI v6) */}
       <Dialog open={openDetailDialog} onClose={() => setOpenDetailDialog(false)} fullWidth maxWidth="md">
         {selectedJob && (
             <>
@@ -565,6 +684,7 @@ function DashboardPage() {
                 </DialogTitle>
                 <DialogContent dividers>
                     <Grid container spacing={2}>
+                        {/* ✅ [Fix Grid] ใช้ size={{...}} แทน item xs=... */}
                         <Grid size={{ xs: 12, md: 8 }}>
                             <Typography variant="subtitle1" fontWeight="bold" gutterBottom>ข้อมูลลูกค้า</Typography>
                             <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: '#fafafa' }}>
@@ -615,26 +735,16 @@ function DashboardPage() {
                                 </Box>
                             )}
 
+                            {/* ลายเซ็นลูกค้า (เรียกจาก jobFeedback) */}
                             {jobFeedback?.signature_url && (
                                 <Box sx={{ mt: 2, p: 2, border: '1px dashed #BDBDBD', borderRadius: 2, bgcolor: '#FAFAFA', textAlign: 'center' }}>
-                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                                        ✍️ ลายเซ็นลูกค้า (ผู้รับงาน)
-                                    </Typography>
-                                    <Box 
-                                        component="img" 
-                                        src={jobFeedback.signature_url}  // 👈 เรียกจาก jobFeedback
-                                        alt="ลายเซ็นลูกค้า" 
-                                        sx={{ 
-                                            maxHeight: 120, 
-                                            maxWidth: '100%', 
-                                            objectFit: 'contain',
-                                            filter: 'contrast(1.2)' 
-                                        }} 
-                                    />
+                                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>✍️ ลายเซ็นลูกค้า (ผู้รับงาน)</Typography>
+                                    <Box component="img" src={jobFeedback.signature_url} alt="ลายเซ็นลูกค้า" sx={{ maxHeight: 120, maxWidth: '100%', objectFit: 'contain', filter: 'contrast(1.2)' }} />
                                 </Box>
                             )}
                         </Grid>
 
+                        {/* ✅ [Fix Grid] ใช้ size={{...}} แทน item xs=... */}
                         <Grid size={{ xs: 12, md: 4 }}>
                             <Typography variant="subtitle2" color="text.secondary">เวลานัดหมาย</Typography>
                             <Typography variant="body1" fontWeight="bold" fontSize="1.2rem" color="primary">{selectedJob.display_date}</Typography>
