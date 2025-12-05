@@ -31,7 +31,7 @@ const TIME_SLOTS = [
     { value: 'MORNING', label: 'ช่วงเช้า', start: 9, end: 12 },
     { value: 'AFTERNOON', label: 'ช่วงบ่าย', start: 13, end: 16 },
     { value: 'EVENING', label: 'ช่วงเย็น', start: 17, end: 20 },
-    { value: 'ALL_DAY', label: 'ทั้งวัน', start: 9, end: 17 },
+    { value: 'ALL_DAY', label: 'ทั้งวัน', start: 0, end: 23 },
 ];
 
 const getSlotFromTime = (startStr: string) => {
@@ -45,9 +45,16 @@ const getSlotFromTime = (startStr: string) => {
 
 const getTimesFromSlot = (dateStr: string, slotValue: string) => {
     const slot = TIME_SLOTS.find(s => s.value === slotValue) || TIME_SLOTS[3]; 
-    const baseDate = dayjs(dateStr);
-    const start = baseDate.hour(slot.start).minute(0).second(0);
-    const end = baseDate.hour(slot.end).minute(0).second(0);
+    const baseDate = dayjs(dateStr);  
+    let start, end;
+    if (slotValue === 'ALL_DAY') {
+        start = baseDate.hour(0).minute(0).second(0);
+        end = baseDate.hour(23).minute(59).second(59);
+    } else {
+        start = baseDate.hour(slot.start).minute(0).second(0);
+        end = baseDate.hour(slot.end).minute(0).second(0);
+    }
+    
     return { start_time: start.toISOString(), end_time: end.toISOString() };
 };
 
@@ -81,18 +88,17 @@ const getDisplayTimeInfo = (startIso: string, endIso: string) => {
     const sh = s.hour(); const sm = s.minute();
     const eh = e.hour(); const em = e.minute();
 
-    // เช็คว่าตรงกับ Slot มาตรฐานไหม (ต้องนาทีเป็น 00 ด้วย)
     const isMorning = sh === 9 && sm === 0 && eh === 12 && em === 0;
     const isAfternoon = sh === 13 && sm === 0 && eh === 16 && em === 0;
     const isEvening = sh === 17 && sm === 0 && eh === 20 && em === 0;
-    const isAllDay = sh === 9 && sm === 0 && eh === 17 && em === 0;
+    
+    const isAllDay = sh === 0 && sm === 0 && eh === 23 && em === 59;
 
     if (isMorning) return { label: 'ช่วงเช้า', isSlot: true };
     if (isAfternoon) return { label: 'ช่วงบ่าย', isSlot: true };
     if (isEvening) return { label: 'ช่วงเย็น', isSlot: true };
     if (isAllDay) return { label: 'ทั้งวัน', isSlot: true };
 
-    // ถ้าไม่ตรงเป๊ะๆ ให้แสดงเป็นตัวเลขเวลา
     return { label: `${s.format('HH:mm')} - ${e.format('HH:mm')}`, isSlot: false };
 };
 
@@ -122,8 +128,8 @@ function DashboardPage() {
       end_date: dayjs().format('YYYY-MM-DD'),
       time_slot: 'ALL_DAY',
       time_mode: 'SLOT', 
-      manual_start: '09:00',
-      manual_end: '17:00',
+      manual_start: '00:00',
+      manual_end: '00:00',
       is_multi_day: false,
       assigned_to: [] as string[], 
       customer_name: '', customer_phone: '', selected_depts: [] as number[], is_feedback_required: false 
@@ -139,8 +145,8 @@ function DashboardPage() {
       end_date: '',
       time_slot: '',
       time_mode: 'SLOT',
-      manual_start: '09:00',
-      manual_end: '17:00', 
+      manual_start: '00:00',
+      manual_end: '00:00', 
       is_multi_day: false,
       department_ids: [], assigned_to: [], is_feedback_required: true
   });
@@ -282,8 +288,8 @@ function DashboardPage() {
         date: dayjs().format('YYYY-MM-DD'), end_date: dayjs().format('YYYY-MM-DD'),
         time_slot: 'ALL_DAY', is_multi_day: false,
         time_mode: 'SLOT', 
-        manual_start: '09:00', 
-        manual_end: '17:00',
+        manual_start: '00:00', 
+        manual_end: '00:00',
         assigned_to: [], customer_name: '', customer_phone: '', selected_depts: [], is_feedback_required: false 
     });
   };

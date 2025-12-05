@@ -24,7 +24,7 @@ const TIME_SLOTS = [
     { value: 'MORNING', label: 'ช่วงเช้า', start: 9, end: 12 },
     { value: 'AFTERNOON', label: 'ช่วงบ่าย', start: 13, end: 16 },
     { value: 'EVENING', label: 'ช่วงเย็น', start: 17, end: 20 },
-    { value: 'ALL_DAY', label: 'ทั้งวัน', start: 9, end: 17 },
+    { value: 'ALL_DAY', label: 'ทั้งวัน', start: 0, end: 23 },
 ];
 
 const getSlotFromTime = (startStr: string) => {
@@ -43,18 +43,17 @@ const getDisplayTimeInfo = (startIso: string, endIso: string) => {
     const sh = s.hour(); const sm = s.minute();
     const eh = e.hour(); const em = e.minute();
 
-    // เช็คว่าตรงกับ Slot มาตรฐานไหม (ต้องนาทีเป็น 00 ด้วย)
     const isMorning = sh === 9 && sm === 0 && eh === 12 && em === 0;
     const isAfternoon = sh === 13 && sm === 0 && eh === 16 && em === 0;
     const isEvening = sh === 17 && sm === 0 && eh === 20 && em === 0;
-    const isAllDay = sh === 9 && sm === 0 && eh === 17 && em === 0;
+
+    const isAllDay = sh === 0 && sm === 0 && eh === 23 && em === 59;
 
     if (isMorning) return { label: 'ช่วงเช้า', isSlot: true };
     if (isAfternoon) return { label: 'ช่วงบ่าย', isSlot: true };
     if (isEvening) return { label: 'ช่วงเย็น', isSlot: true };
     if (isAllDay) return { label: 'ทั้งวัน', isSlot: true };
 
-    // ถ้าไม่ตรงเป๊ะๆ ให้แสดงเป็นตัวเลขเวลา
     return { label: `${s.format('HH:mm')} - ${e.format('HH:mm')}`, isSlot: false };
 };
 
