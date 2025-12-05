@@ -36,6 +36,28 @@ const getSlotFromTime = (startStr: string) => {
     return 'ALL_DAY';
 };
 
+const getDisplayTimeInfo = (startIso: string, endIso: string) => {
+    const s = dayjs(startIso);
+    const e = dayjs(endIso);
+    
+    const sh = s.hour(); const sm = s.minute();
+    const eh = e.hour(); const em = e.minute();
+
+    // เช็คว่าตรงกับ Slot มาตรฐานไหม (ต้องนาทีเป็น 00 ด้วย)
+    const isMorning = sh === 9 && sm === 0 && eh === 12 && em === 0;
+    const isAfternoon = sh === 13 && sm === 0 && eh === 16 && em === 0;
+    const isEvening = sh === 17 && sm === 0 && eh === 20 && em === 0;
+    const isAllDay = sh === 9 && sm === 0 && eh === 17 && em === 0;
+
+    if (isMorning) return { label: 'ช่วงเช้า', isSlot: true };
+    if (isAfternoon) return { label: 'ช่วงบ่าย', isSlot: true };
+    if (isEvening) return { label: 'ช่วงเย็น', isSlot: true };
+    if (isAllDay) return { label: 'ทั้งวัน', isSlot: true };
+
+    // ถ้าไม่ตรงเป๊ะๆ ให้แสดงเป็นตัวเลขเวลา
+    return { label: `${s.format('HH:mm')} - ${e.format('HH:mm')}`, isSlot: false };
+};
+
 const getStatusLabel = (status: string) => {
     switch (status) {
         case 'PENDING': return 'รอดำเนินการ';
@@ -140,9 +162,9 @@ function MyJobsPage() {
     });
 
     const openJobDetail = (job: any) => {
-        const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+        const info = getDisplayTimeInfo(job.start_time, job.end_time);
         const dateFormatted = dayjs(job.start_time).format('DD/MM/YYYY');
-        setSelectedJob({ ...job, display_date: dateFormatted, display_slot: slotLabel });
+        setSelectedJob({ ...job, display_date: dateFormatted, display_slot: info.label });
         setSelectedImages([]); setPreviewUrls([]);
         setOpenDetailDialog(true);
     };
@@ -400,14 +422,24 @@ function MyJobsPage() {
                                     </TableCell>
                                     <TableCell><Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold', minWidth: '90px' }} /></TableCell>
                                     <TableCell>
-                                        {/* ✅ 3. แสดงวันที่แบบใหม่ */}
                                         <Stack direction="row" alignItems="center" spacing={1}>
                                             <CalendarIcon fontSize="small" color="primary" />
-                                            <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
-                                                {dateShow}
-                                            </Typography>
+                                            <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>{dateShow}</Typography>
                                         </Stack>
-                                        <Chip label={slotLabel} size="small" variant="filled" color="default" sx={{ mt: 0.5, fontSize: '0.75rem' }} />
+                                        
+                                        {/* ✅ ต้องเรียกใช้ฟังก์ชัน getDisplayTimeInfo เพื่อให้เช็คนาทีได้ */}
+                                        {(() => {
+                                            const info = getDisplayTimeInfo(job.start_time, job.end_time);
+                                            return (
+                                                <Chip 
+                                                    label={info.label} 
+                                                    size="small" 
+                                                    variant={info.isSlot ? "filled" : "outlined"} 
+                                                    color={info.isSlot ? "default" : "info"} 
+                                                    sx={{ mt: 0.5, fontSize: '0.75rem' }} 
+                                                />
+                                            );
+                                        })()}
                                     </TableCell>
                                     <TableCell align="center">
                                         <Button variant="outlined" size="small" startIcon={<Visibility />} onClick={() => openJobDetail(job)}>รายละเอียด</Button>

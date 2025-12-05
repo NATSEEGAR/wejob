@@ -4,7 +4,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, TextField, Stack, InputAdornment,
   ToggleButton, ToggleButtonGroup, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   MenuItem, Select, InputLabel, FormControl, IconButton, Avatar, OutlinedInput,
-  Checkbox, ListItemText, FormControlLabel, Switch, Divider, TablePagination, Box, Rating
+  Checkbox, ListItemText, FormControlLabel, Switch, Divider, TablePagination, Box, Rating, Radio, RadioGroup, FormLabel
 } from '@mui/material';
 
 import { 
@@ -73,6 +73,29 @@ const getStatusLabel = (status: string) => {
     }
 };
 
+// ✅ ฟังก์ชันช่วยเช็คและแสดงผลเวลา (ฉบับอัปเกรด เช็คนาทีด้วย)
+const getDisplayTimeInfo = (startIso: string, endIso: string) => {
+    const s = dayjs(startIso);
+    const e = dayjs(endIso);
+    
+    const sh = s.hour(); const sm = s.minute();
+    const eh = e.hour(); const em = e.minute();
+
+    // เช็คว่าตรงกับ Slot มาตรฐานไหม (ต้องนาทีเป็น 00 ด้วย)
+    const isMorning = sh === 9 && sm === 0 && eh === 12 && em === 0;
+    const isAfternoon = sh === 13 && sm === 0 && eh === 16 && em === 0;
+    const isEvening = sh === 17 && sm === 0 && eh === 20 && em === 0;
+    const isAllDay = sh === 9 && sm === 0 && eh === 17 && em === 0;
+
+    if (isMorning) return { label: 'ช่วงเช้า', isSlot: true };
+    if (isAfternoon) return { label: 'ช่วงบ่าย', isSlot: true };
+    if (isEvening) return { label: 'ช่วงเย็น', isSlot: true };
+    if (isAllDay) return { label: 'ทั้งวัน', isSlot: true };
+
+    // ถ้าไม่ตรงเป๊ะๆ ให้แสดงเป็นตัวเลขเวลา
+    return { label: `${s.format('HH:mm')} - ${e.format('HH:mm')}`, isSlot: false };
+};
+
 function DashboardPage() {
   const [profile, setProfile] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]); 
@@ -98,6 +121,9 @@ function DashboardPage() {
       date: dayjs().format('YYYY-MM-DD'), 
       end_date: dayjs().format('YYYY-MM-DD'),
       time_slot: 'ALL_DAY',
+      time_mode: 'SLOT', 
+      manual_start: '09:00',
+      manual_end: '17:00',
       is_multi_day: false,
       assigned_to: [] as string[], 
       customer_name: '', customer_phone: '', selected_depts: [] as number[], is_feedback_required: false 
@@ -111,7 +137,10 @@ function DashboardPage() {
       title: '', description: '', customer_name: '', customer_phone: '', location: '', 
       date: '', 
       end_date: '',
-      time_slot: '', 
+      time_slot: '',
+      time_mode: 'SLOT',
+      manual_start: '09:00',
+      manual_end: '17:00', 
       is_multi_day: false,
       department_ids: [], assigned_to: [], is_feedback_required: true
   });
@@ -194,29 +223,42 @@ function DashboardPage() {
   });
 
   const handleCreateJob = async () => {
+    // ... (ส่วนเช็คข้อมูลต้นฟังก์ชัน เหมือนเดิม) ...
     if (!newJob.title || !newJob.date || !newJob.location || newJob.selected_depts.length === 0) {
       showError("ข้อมูลไม่ครบ", "กรุณากรอกข้อมูลและเลือกฝ่ายรับผิดชอบ"); return;
     }
-    
     if (newJob.is_multi_day && !newJob.end_date) {
         showError("ข้อมูลไม่ครบ", "กรุณาระบุวันที่สิ้นสุดสำหรับงานต่อเนื่อง"); return;
     }
 
     if (!(await confirmAction('ยืนยันการมอบหมาย', `สร้างงาน "${newJob.title}"?`))) return;
 
+    // ✅ ส่วนคำนวณเวลา (ของ Create ใช้ newJob)
     let start_time_iso, end_time_iso;
+    let sTime, eTime;
+
+    if (newJob.time_mode === 'SLOT') {
+        const times = getTimesFromSlot(newJob.date, newJob.time_slot);
+        sTime = dayjs(times.start_time).format('HH:mm');
+        eTime = dayjs(times.end_time).format('HH:mm');
+    } else {
+        sTime = newJob.manual_start;
+        eTime = newJob.manual_end;
+        if (!sTime || !eTime) {
+            showError("เวลาไม่ครบ", "กรุณาระบุเวลาเริ่มและสิ้นสุดให้ครบถ้วน"); return;
+        }
+    }
+
+    start_time_iso = dayjs(`${newJob.date}T${sTime}:00`).toISOString();
 
     if (newJob.is_multi_day) {
-        start_time_iso = dayjs(newJob.date).hour(9).minute(0).second(0).toISOString();
-        end_time_iso = dayjs(newJob.end_date).hour(17).minute(0).second(0).toISOString();
-        
-        if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
-             showError("ข้อมูลผิดพลาด", "วันที่สิ้นสุดต้องหลังจากวันที่เริ่ม"); return;
-        }
+        end_time_iso = dayjs(`${newJob.end_date}T${eTime}:00`).toISOString();
     } else {
-        const { start_time, end_time } = getTimesFromSlot(newJob.date, newJob.time_slot);
-        start_time_iso = start_time;
-        end_time_iso = end_time;
+        end_time_iso = dayjs(`${newJob.date}T${eTime}:00`).toISOString();
+    }
+
+    if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
+         showError("เวลาไม่ถูกต้อง", "เวลาสิ้นสุดต้องหลังจากเวลาเริ่มต้น"); return;
     }
 
     const { data: jobData, error } = await supabase.from('Jobs').insert([{
@@ -239,6 +281,9 @@ function DashboardPage() {
         title: '', location: '', map_url: '', description: '', 
         date: dayjs().format('YYYY-MM-DD'), end_date: dayjs().format('YYYY-MM-DD'),
         time_slot: 'ALL_DAY', is_multi_day: false,
+        time_mode: 'SLOT', 
+        manual_start: '09:00', 
+        manual_end: '17:00',
         assigned_to: [], customer_name: '', customer_phone: '', selected_depts: [], is_feedback_required: false 
     });
   };
@@ -269,17 +314,32 @@ function DashboardPage() {
       if (!(await confirmAction('บันทึกการแก้ไข?', 'ข้อมูลเดิมจะถูกเปลี่ยนแปลง'))) return;
 
       try {
+          // ✅ ส่วนคำนวณเวลา (ของ Update ใช้ editForm)
           let start_time_iso, end_time_iso;
-          if (editForm.is_multi_day) {
-              start_time_iso = dayjs(editForm.date).hour(9).minute(0).second(0).toISOString();
-              end_time_iso = dayjs(editForm.end_date).hour(17).minute(0).second(0).toISOString();
-               if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
-                    showError("ข้อมูลผิดพลาด", "วันที่สิ้นสุดต้องหลังจากวันที่เริ่ม"); return;
-               }
+          let sTime, eTime;
+
+          if (editForm.time_mode === 'SLOT') {
+              const times = getTimesFromSlot(editForm.date, editForm.time_slot);
+              sTime = dayjs(times.start_time).format('HH:mm');
+              eTime = dayjs(times.end_time).format('HH:mm');
           } else {
-              const { start_time, end_time } = getTimesFromSlot(editForm.date, editForm.time_slot);
-              start_time_iso = start_time;
-              end_time_iso = end_time;
+              sTime = editForm.manual_start;
+              eTime = editForm.manual_end;
+              if (!sTime || !eTime) {
+            showError("เวลาไม่ครบ", "กรุณาระบุเวลาเริ่มและสิ้นสุดให้ครบถ้วน"); return;
+        }
+          }
+
+          start_time_iso = dayjs(`${editForm.date}T${sTime}:00`).toISOString();
+
+          if (editForm.is_multi_day) {
+              end_time_iso = dayjs(`${editForm.end_date}T${eTime}:00`).toISOString();
+          } else {
+              end_time_iso = dayjs(`${editForm.date}T${eTime}:00`).toISOString();
+          }
+
+          if (dayjs(end_time_iso).isBefore(dayjs(start_time_iso))) {
+               showError("เวลาไม่ถูกต้อง", "เวลาสิ้นสุดต้องหลังจากเวลาเริ่มต้น"); return;
           }
 
           const { error } = await supabase.from('Jobs').update({
@@ -327,7 +387,10 @@ function DashboardPage() {
   };
 
   const calendarEvents = filteredJobs.map((job: any) => {
-      const slotLabel = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label || '';
+      // ✅ แก้ตรงนี้เหมือนกัน
+      const info = getDisplayTimeInfo(job.start_time, job.end_time);
+      const slotLabel = info.label;
+
       return { 
           id: job.id, 
           title: `[${slotLabel}] ${job.title}`, 
@@ -341,9 +404,14 @@ function DashboardPage() {
   const handleEventClick = (info: any) => { openJobDetail(info.event.extendedProps); };
   
   const openJobDetail = (job: any) => { 
-    const slot = TIME_SLOTS.find(s => s.value === getSlotFromTime(job.start_time))?.label;
+    // ✅ แก้ตรงนี้: ใช้ getDisplayTimeInfo แทนการเดา Slot
+    const info = getDisplayTimeInfo(job.start_time, job.end_time);
+    
     const dateFormatted = dayjs(job.start_time).format('DD/MM/YYYY');
-    setSelectedJob({ ...job, display_date: dateFormatted, display_slot: slot }); 
+    
+    // ส่ง info.label ไปแสดงผลเลย (จะได้เป็น "12:00 - 17:00" หรือ "ช่วงเช้า" ตามจริง)
+    setSelectedJob({ ...job, display_date: dateFormatted, display_slot: info.label }); 
+    
     fetchJobFeedback(job.id); 
     setOpenDetailDialog(true); 
   }
@@ -476,11 +544,23 @@ function DashboardPage() {
                                         <Chip label={getStatusLabel(job.status)} size="small" sx={{ bgcolor: getStatusColor(job.status), color: 'white', fontWeight: 'bold', minWidth: 100 }} />
                                     </TableCell>
                                     <TableCell>
-                                        {/* ✅ 3. แสดงวันที่แบบใหม่ */}
                                         <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
                                             {dateShow}
                                         </Typography>
-                                        <Chip label={slotLabel} size="small" variant="filled" sx={{ mt: 0.5, fontSize: '0.75rem' }} />
+                                        
+                                        {/* ✅ ต้องเรียกใช้ฟังก์ชัน getDisplayTimeInfo ตรงนี้ครับ */}
+                                        {(() => {
+                                            const info = getDisplayTimeInfo(job.start_time, job.end_time);
+                                            return (
+                                                <Chip 
+                                                    label={info.label} 
+                                                    size="small" 
+                                                    variant={info.isSlot ? "filled" : "outlined"} 
+                                                    color={info.isSlot ? "default" : "primary"}
+                                                    sx={{ mt: 0.5, fontSize: '0.75rem' }} 
+                                                />
+                                            );
+                                        })()}
                                     </TableCell>
                                     <TableCell align="center">
                                         <Stack direction="row" spacing={1} justifyContent="center">
@@ -551,34 +631,58 @@ function DashboardPage() {
                     sx={{ mt: 1 }}
                  />
 
-                 {/* 6. ส่วนเลือกวันที่ (ตามเงื่อนไข Checkbox) */}
-                 {newJob.is_multi_day ? (
-                     // กรณีหลายวัน: วันเริ่ม - วันจบ
-                     <Stack direction="row" spacing={2}>
-                        <TextField 
-                            label="วันที่เริ่ม" type="date" fullWidth InputLabelProps={{ shrink: true }} 
-                            value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} 
-                        />
+                 {/* ✅ 1. เพิ่มปุ่มเลือกโหมดเวลา (วางต่อจาก Checkbox งานต่อเนื่อง) */}
+                 <FormControl component="fieldset" sx={{ mt: 1, mb: 1 }}>
+                    <FormLabel component="legend" sx={{ fontSize: '0.8rem' }}>รูปแบบเวลา</FormLabel>
+                    <RadioGroup 
+                        row 
+                        value={newJob.time_mode} 
+                        onChange={(e) => setNewJob({ ...newJob, time_mode: e.target.value })}
+                    >
+                        <FormControlLabel value="SLOT" control={<Radio size="small" />} label="เลือกช่วงเวลา (เช้า/บ่าย)" />
+                        <FormControlLabel value="SPECIFIC" control={<Radio size="small" />} label="ระบุเวลาเอง (เวลา:นาที)" />
+                    </RadioGroup>
+                 </FormControl>
+
+                 {/* ✅ 2. ส่วนกรอกวันที่และเวลา (ปรับเปลี่ยนตามโหมดที่เลือก) */}
+                 <Stack direction="row" spacing={2} alignItems="flex-start">
+                    {/* วันที่เริ่ม (แสดงเสมอ) */}
+                    <TextField 
+                        label={newJob.is_multi_day ? "วันที่เริ่ม" : "วันที่"} 
+                        type="date" fullWidth InputLabelProps={{ shrink: true }} 
+                        value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} 
+                    />
+
+                    {/* วันที่สิ้นสุด (แสดงเฉพาะตอนติ๊กงานต่อเนื่อง) */}
+                    {newJob.is_multi_day && (
                         <TextField 
                             label="วันที่สิ้นสุด" type="date" fullWidth InputLabelProps={{ shrink: true }} 
                             value={newJob.end_date} onChange={e => setNewJob({...newJob, end_date: e.target.value})} 
                         />
-                     </Stack>
-                 ) : (
-                     // กรณีวันเดียว: วันที่ - ช่วงเวลา
-                     <Stack direction="row" spacing={2}>
-                        <TextField 
-                            label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} 
-                            value={newJob.date} onChange={e => setNewJob({...newJob, date: e.target.value})} 
-                        />
+                    )}
+
+                    {/* ส่วนเลือกเวลา: เปลี่ยนไปมาระหว่าง Dropdown กับ นาฬิกา */}
+                    {newJob.time_mode === 'SLOT' ? (
                         <FormControl fullWidth>
                             <InputLabel>ช่วงเวลา</InputLabel>
                             <Select value={newJob.time_slot} label="ช่วงเวลา" onChange={(e) => setNewJob({...newJob, time_slot: e.target.value})}>
                                 {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
                             </Select>
                         </FormControl>
-                     </Stack>
-                 )}
+                    ) : (
+                        // โหมดระบุเวลาเอง: แสดงช่องกรอก 2 ช่อง
+                        <Stack direction="row" spacing={1} sx={{ minWidth: 220 }}>
+                             <TextField 
+                                label="เริ่ม" type="time" fullWidth InputLabelProps={{ shrink: true }} 
+                                value={newJob.manual_start} onChange={e => setNewJob({...newJob, manual_start: e.target.value})} 
+                             />
+                             <TextField 
+                                label="ถึง" type="time" fullWidth InputLabelProps={{ shrink: true }} 
+                                value={newJob.manual_end} onChange={e => setNewJob({...newJob, manual_end: e.target.value})} 
+                             />
+                        </Stack>
+                    )}
+                 </Stack>
 
                  {/* 7. เลือกฝ่ายและทีมงาน */}
                  <FormControl fullWidth>
@@ -616,41 +720,48 @@ function DashboardPage() {
                    <TextField label="เบอร์โทรศัพท์" fullWidth value={editForm.customer_phone} onChange={e => setEditForm({...editForm, customer_phone: e.target.value})} />
                 </Stack>
                 <TextField label="สถานที่" fullWidth value={editForm.location} onChange={e => setEditForm({...editForm, location: e.target.value})} />
-                <TextField 
-                    label="รายละเอียดงานเพิ่มเติม" 
-                    fullWidth 
-                    multiline 
-                    rows={4} 
-                    value={editForm.description} 
-                    onChange={e => setEditForm({...editForm, description: e.target.value})} 
-                />
                 
-                {/* ... (ก่อนถึงส่วนเลือกวันที่) ... */}
-                <Stack direction="row" spacing={2}></Stack>
-                {/* ✅ [UPDATED UI] Checkbox แก้ไขงานต่อเนื่อง */}
+                <TextField 
+                    label="รายละเอียดงานเพิ่มเติม" fullWidth multiline rows={4} 
+                    value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} 
+                />
+
                 <FormControlLabel 
                     control={<Checkbox checked={editForm.is_multi_day} onChange={(e) => setEditForm({ ...editForm, is_multi_day: e.target.checked })} />} 
-                    label="งานต่อเนื่องหลายวัน" 
-                    sx={{ mt: 1 }}
+                    label="งานต่อเนื่องหลายวัน" sx={{ mt: 1 }}
                 />
                 
-                {editForm.is_multi_day ? (
-                     <Stack direction="row" spacing={2}>
-                        <TextField label="วันที่เริ่ม" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                {/* ✅ 1. เลือกโหมดเวลา */}
+                <FormControl component="fieldset" sx={{ mt: 1, mb: 1 }}>
+                    <FormLabel component="legend" sx={{ fontSize: '0.8rem' }}>รูปแบบเวลา</FormLabel>
+                    <RadioGroup row value={editForm.time_mode} onChange={(e) => setEditForm({ ...editForm, time_mode: e.target.value })}>
+                        <FormControlLabel value="SLOT" control={<Radio size="small" />} label="เลือกช่วงเวลา (เช้า/บ่าย)" />
+                        <FormControlLabel value="SPECIFIC" control={<Radio size="small" />} label="ระบุเวลาเอง (เวลา:นาที)" />
+                    </RadioGroup>
+                 </FormControl>
+
+                 {/* ✅ 2. กรอกวันที่และเวลา */}
+                 <Stack direction="row" spacing={2} alignItems="flex-start">
+                    <TextField label={editForm.is_multi_day ? "วันที่เริ่ม" : "วันที่"} type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                    {editForm.is_multi_day && (
                         <TextField label="วันที่สิ้นสุด" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.end_date} onChange={e => setEditForm({...editForm, end_date: e.target.value})} />
-                     </Stack>
-                 ) : (
-                     <Stack direction="row" spacing={2}>
-                        <TextField label="วันที่เข้าบริการ" type="date" fullWidth InputLabelProps={{ shrink: true }} value={editForm.date} onChange={e => setEditForm({...editForm, date: e.target.value})} />
+                    )}
+                    {editForm.time_mode === 'SLOT' ? (
                         <FormControl fullWidth>
                             <InputLabel>ช่วงเวลา</InputLabel>
                             <Select value={editForm.time_slot} label="ช่วงเวลา" onChange={(e) => setEditForm({...editForm, time_slot: e.target.value})}>
                                 {TIME_SLOTS.map((slot) => (<MenuItem key={slot.value} value={slot.value}>{slot.label}</MenuItem>))}
                             </Select>
                         </FormControl>
-                     </Stack>
-                 )}
+                    ) : (
+                        <Stack direction="row" spacing={1} sx={{ minWidth: 220 }}>
+                             <TextField label="เริ่ม" type="time" fullWidth InputLabelProps={{ shrink: true }} value={editForm.manual_start} onChange={e => setEditForm({...editForm, manual_start: e.target.value})} />
+                             <TextField label="ถึง" type="time" fullWidth InputLabelProps={{ shrink: true }} value={editForm.manual_end} onChange={e => setEditForm({...editForm, manual_end: e.target.value})} />
+                        </Stack>
+                    )}
+                 </Stack>
 
+                {/* ⚠️ ส่วนนี้อย่าลืมใส่กลับมานะครับ! (เลือกฝ่าย + เลือกคน) */}
                 <FormControl fullWidth>
                     <InputLabel>ฝ่ายที่รับผิดชอบ</InputLabel>
                     <Select multiple value={editForm.department_ids} onChange={(e) => { const values = typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value; setEditForm({...editForm, department_ids: values as number[]}); }} input={<OutlinedInput label="ฝ่ายที่รับผิดชอบ" />} renderValue={(selected) => (<Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>{selected.map((value: any) => { const dept = departments.find(d => d.id === value); return <Chip key={value} label={dept?.name} size="small" />; })}</Box>)}>

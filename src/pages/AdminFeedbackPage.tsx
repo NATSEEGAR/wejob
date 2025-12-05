@@ -295,7 +295,7 @@ export default function AdminFeedbackPage() {
                             <TableCell>งาน</TableCell>
                             <TableCell>ลูกค้า</TableCell>
                             <TableCell>คะแนน</TableCell>
-                            <TableCell>ความคิดเห็น</TableCell>
+                            <TableCell>ข้อเสนอแนะ</TableCell>
                             <TableCell>ฝ่าย</TableCell>
                         </TableRow>
                     </TableHead>
