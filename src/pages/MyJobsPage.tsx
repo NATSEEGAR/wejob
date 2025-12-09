@@ -146,7 +146,7 @@ function MyJobsPage() {
         if (!user) return;
         const { data } = await supabase.from('JobAssignments').select(`job_id, Jobs:job_id (*)`).eq('user_id', user.id).order('id', { ascending: false });
         const myJobList = data?.map((item: any) => item.Jobs).filter((j: any) => j !== null) || [];
-        myJobList.sort((a: any, b: any) => b.id - a.id);
+        myJobList.sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
         setJobs(myJobList);
     };
 

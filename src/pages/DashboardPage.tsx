@@ -155,7 +155,10 @@ function DashboardPage() {
     const currentProfile = userProfile || profile;
     if (!currentProfile) return;
 
-    let query = supabase.from('Jobs').select(`*, JobAssignments (user_id, Profiles (nickname, first_name, last_name))`).order('id', { ascending: false });
+    let query = supabase
+    .from('Jobs')
+    .select(`*, JobAssignments (user_id, Profiles (nickname, first_name, last_name))`)
+    .order('start_time', { ascending: true });
 
     if (currentProfile.role !== 'ADMIN') {
         if (currentProfile.department_id) {
